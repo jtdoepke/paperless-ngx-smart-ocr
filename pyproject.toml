@@ -236,6 +236,7 @@ module = [
     "marker.*",
     "pymupdf.*",
     "fitz.*",
+    "pydantic_settings.*",
 ]
 ignore_missing_imports = true
 

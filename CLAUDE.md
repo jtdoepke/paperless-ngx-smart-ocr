@@ -25,7 +25,7 @@ uv run smart-ocr --quiet       # Only warnings and errors
 
 # Testing
 uv run pytest                              # Run all tests
-uv run pytest tests/unit/test_logging.py  # Run single test file
+uv run pytest tests/unit/test_config.py   # Run single test file
 uv run pytest -k "test_name"              # Run tests matching pattern
 uv run pytest --cov=paperless_ngx_smart_ocr --cov-report=html  # With coverage
 
@@ -57,17 +57,34 @@ Three ways to trigger processing:
 2. **Webhook**: paperless-ngx Workflow sends POST on document events
 3. **Post-consume**: CLI runs synchronously after document consumption
 
-### Key Modules
+### Implemented Modules
 
+- **`config/`** - Pydantic settings with YAML + env vars, `${VAR}` interpolation, secret file support
 - **`paperless/`** - Async API client for paperless-ngx (PaperlessClient, Document/Tag models)
-- **`observability/`** - Logging with structlog, request ID tracking
-- **`config/`** - Pydantic settings (YAML + env vars)
-- **`pipeline/`** - OCR and Markdown processing stages
-- **`workers/`** - Polling, webhook, post-consume integrations
-- **`web/`** - FastAPI + htmx + Tailwind UI
+- **`observability/`** - Structured logging with structlog, request ID tracking
 - **`cli/`** - Typer CLI (entry point: `smart-ocr`)
 
-### Paperless-ngx Client Usage
+### Module Usage Examples
+
+#### Configuration
+
+```python
+from paperless_ngx_smart_ocr.config import load_settings, get_settings
+
+# Load from YAML file or environment
+settings = load_settings()  # Searches ./config.yaml, ~/.config/smart-ocr/config.yaml
+settings = load_settings("/path/to/config.yaml")
+
+# Access nested settings
+settings.paperless.url           # http://localhost:8000
+settings.pipeline.stage1.enabled # True
+settings.web.port                # 8080
+
+# Use cached singleton
+settings = get_settings()
+```
+
+#### Paperless-ngx Client
 
 ```python
 from paperless_ngx_smart_ocr.paperless import PaperlessClient, DocumentUpdate
@@ -79,7 +96,7 @@ async with PaperlessClient(base_url, token) as client:
     await client.add_tags_to_document(doc_id, [tag.id])
 ```
 
-### Logging Usage
+#### Logging
 
 ```python
 from paperless_ngx_smart_ocr.observability import configure_logging, get_logger, set_request_id

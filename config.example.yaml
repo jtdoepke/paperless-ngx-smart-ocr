@@ -1,0 +1,159 @@
+# paperless-ngx-smart-ocr configuration
+#
+# This file can be placed in one of the following locations:
+#   - ./config.yaml (current directory)
+#   - ~/.config/smart-ocr/config.yaml
+#   - /etc/smart-ocr/config.yaml
+#
+# Environment variables can be interpolated using ${VAR} or ${VAR:-default} syntax.
+# Environment variables also override YAML values using SMARTOCR_ prefix with __ delimiter.
+# Example: SMARTOCR_WEB__PORT=9000 overrides web.port
+
+# ---------------------------------------------------------------------------
+# Paperless-ngx connection
+# ---------------------------------------------------------------------------
+paperless:
+  url: "http://paperless-ngx:8000"
+  # API token - use one of these methods:
+  # 1. Direct value (supports ${VAR} interpolation)
+  token: "${PAPERLESS_TOKEN}"
+  # 2. Read from file (useful for Docker secrets)
+  # token_file: "/run/secrets/paperless_token"
+
+# ---------------------------------------------------------------------------
+# Tag-based workflow configuration
+# ---------------------------------------------------------------------------
+tags:
+  # Prefix for workflow tags (creates tags like smart-ocr:pending, smart-ocr:completed)
+  prefix: "smart-ocr"
+  # Documents with ANY of these tags will be processed
+  include:
+    - "smart-ocr:pending"
+  # Documents with ANY of these tags will be skipped
+  exclude:
+    - "smart-ocr:completed"
+    - "smart-ocr:failed"
+    - "smart-ocr:skip"
+
+# ---------------------------------------------------------------------------
+# Processing pipeline configuration
+# ---------------------------------------------------------------------------
+pipeline:
+  # Stage 1: OCR (adds searchable text layer to scanned PDFs)
+  stage1:
+    enabled: true
+    # How to handle documents that already have text:
+    #   "skip" - skip OCR if text is detected (default)
+    #   "force" - always OCR, replacing existing text
+    born_digital_handling: "skip"
+
+    # OCRmyPDF options
+    ocrmypdf:
+      deskew: true          # Straighten skewed pages
+      clean: true           # Remove speckles/noise
+      rotate_pages: true    # Auto-rotate to correct orientation
+      language: "eng"       # Tesseract language(s), e.g., "eng+fra"
+      extra_args: []        # Additional OCRmyPDF arguments
+
+    # Surya layout detection (improves OCR for complex layouts)
+    layout_detection:
+      enabled: true
+      confidence_threshold: 0.5  # 0.0 to 1.0
+      # Region types to exclude from OCR
+      exclude_regions:
+        - "advertisement"
+        - "page_number"
+        - "header"
+        - "footer"
+
+  # Stage 2: Markdown conversion (converts PDF to structured Markdown)
+  stage2:
+    enabled: true
+    # How to handle existing content:
+    #   "replace" - replace content entirely (default)
+    #   "append" - append below existing content
+    content_mode: "replace"
+
+    # Marker PDF-to-Markdown options
+    marker:
+      # Enable LLM assistance (may introduce hallucinations - use with caution)
+      use_llm: false
+      # LLM configuration (only used if use_llm is true)
+      llm:
+        provider: "openai"  # "openai", "anthropic", or "ollama"
+        model: "gpt-4o-mini"
+        api_key: "${OPENAI_API_KEY}"
+
+# ---------------------------------------------------------------------------
+# Integration mode configuration
+# ---------------------------------------------------------------------------
+integration:
+  # Polling: periodically check for documents to process
+  polling:
+    enabled: true
+    interval_seconds: 300   # 5 minutes
+    batch_size: 10          # Max documents per poll cycle
+
+  # Webhook: receive notifications from Paperless-ngx Workflows
+  webhook:
+    enabled: false
+    # Secret for webhook validation (supports ${VAR} interpolation)
+    secret: "${WEBHOOK_SECRET}"
+
+  # Post-consume: run as Paperless-ngx post-consume script
+  post_consume:
+    enabled: false
+
+# ---------------------------------------------------------------------------
+# Auto-processing
+# ---------------------------------------------------------------------------
+auto_processing:
+  # Enable automatic background processing
+  # Manual processing via web UI is always available
+  enabled: true
+
+# ---------------------------------------------------------------------------
+# Background job configuration
+# ---------------------------------------------------------------------------
+jobs:
+  workers: 2              # Concurrent processing tasks
+  timeout: 600            # Timeout per document (seconds)
+
+# ---------------------------------------------------------------------------
+# GPU configuration
+# ---------------------------------------------------------------------------
+gpu:
+  # GPU mode for Surya and Marker:
+  #   "auto" - detect and use GPU if available (default)
+  #   "cuda" - force NVIDIA CUDA
+  #   "cpu" - disable GPU
+  enabled: "auto"
+
+# ---------------------------------------------------------------------------
+# Web UI configuration
+# ---------------------------------------------------------------------------
+web:
+  host: "0.0.0.0"
+  port: 8080
+  # Theme: "auto" (system preference), "dark", or "light"
+  theme: "auto"
+
+# ---------------------------------------------------------------------------
+# Observability configuration
+# ---------------------------------------------------------------------------
+observability:
+  logging:
+    # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+    level: "INFO"
+    # Log format: "json" (structured) or "console" (human-readable)
+    format: "json"
+
+  metrics:
+    # Prometheus metrics endpoint
+    enabled: true
+    port: 9090
+
+  tracing:
+    # OpenTelemetry tracing
+    enabled: false
+    otlp_endpoint: "http://jaeger:4317"

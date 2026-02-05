@@ -553,11 +553,11 @@ Completed: Project initialized with uv, pyproject.toml configured with all depen
 
 ### Phase 2: Core Infrastructure
 
-- [ ] **Configuration module** (`src/paperless_ngx_smart_ocr/config/`)
-  - [ ] Pydantic settings with YAML + env support
-  - [ ] Configuration validation schemas
-  - [ ] Environment variable interpolation (`${VAR}` syntax)
-  - [ ] Secret file support (`token_file`)
+- [x] **Configuration module** (`src/paperless_ngx_smart_ocr/config/`)
+  - [x] Pydantic settings with YAML + env support
+  - [x] Configuration validation schemas
+  - [x] Environment variable interpolation (`${VAR}` syntax)
+  - [x] Secret file support (`token_file`)
 - [x] **Logging setup** (`src/paperless_ngx_smart_ocr/observability/logging.py`)
   - [x] Structured logfmt-style logging with structlog (human + machine readable)
   - [x] Configurable log levels and formatting (--verbose/-V, --quiet/-q CLI flags)
