@@ -1,0 +1,303 @@
+[project]
+name = "paperless-ngx-smart-ocr"
+version = "0.1.0"
+description = "Intelligent, layout-aware OCR and Markdown conversion for paperless-ngx"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+authors = [
+    { name = "Jaye Doepke", email = "jaye@doepke.dev" }
+]
+keywords = ["paperless-ngx", "ocr", "pdf", "markdown", "document-processing"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Web Environment",
+    "Framework :: FastAPI",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Text Processing :: General",
+    "Topic :: Multimedia :: Graphics :: Capture :: Scanners",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    # Web Framework
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+
+    # HTTP Client
+    "httpx>=0.28.0",
+
+    # Configuration & Validation
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.6.0",
+    "pyyaml>=6.0.2",
+
+    # OCR Pipeline
+    "ocrmypdf>=16.7.0",
+    "surya-ocr>=0.8.0",
+    "marker-pdf>=1.0.0",
+    "pymupdf>=1.25.0",
+
+    # Web UI
+    "jinja2>=3.1.4",
+    "python-multipart>=0.0.18",
+
+    # Observability
+    "structlog>=24.4.0",
+    "prometheus-client>=0.21.0",
+    "opentelemetry-api>=1.29.0",
+    "opentelemetry-sdk>=1.29.0",
+    "opentelemetry-exporter-otlp>=1.29.0",
+
+    # CLI
+    "typer>=0.15.0",
+    "rich>=13.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    # Testing
+    "pytest>=8.3.0",
+    "pytest-cov>=6.0.0",
+    "pytest-asyncio>=0.25.0",
+    "respx>=0.22.0",
+
+    # Code Quality
+    "ruff>=0.8.0",
+    "mypy>=1.14.0",
+    "pre-commit>=4.0.0",
+
+    # Type stubs
+    "types-pyyaml>=6.0.12",
+]
+
+[project.scripts]
+smart-ocr = "paperless_ngx_smart_ocr.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/jtdoepke/paperless-ngx-smart-ocr"
+Documentation = "https://github.com/jtdoepke/paperless-ngx-smart-ocr#readme"
+Repository = "https://github.com/jtdoepke/paperless-ngx-smart-ocr.git"
+Issues = "https://github.com/jtdoepke/paperless-ngx-smart-ocr/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/paperless_ngx_smart_ocr"]
+
+# ============================================================================
+# Ruff Configuration - Strict Mode
+# ============================================================================
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "F",      # Pyflakes
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "C90",    # mccabe complexity
+    "I",      # isort
+    "N",      # pep8-naming
+    "UP",     # pyupgrade
+    "YTT",    # flake8-2020
+    "ANN",    # flake8-annotations
+    "ASYNC",  # flake8-async
+    "S",      # flake8-bandit (security)
+    "BLE",    # flake8-blind-except
+    "FBT",    # flake8-boolean-trap
+    "B",      # flake8-bugbear
+    "A",      # flake8-builtins
+    "COM",    # flake8-commas
+    "C4",     # flake8-comprehensions
+    "DTZ",    # flake8-datetimez
+    "T10",    # flake8-debugger
+    "EM",     # flake8-errmsg
+    "EXE",    # flake8-executable
+    "FA",     # flake8-future-annotations
+    "ISC",    # flake8-implicit-str-concat
+    "ICN",    # flake8-import-conventions
+    "LOG",    # flake8-logging
+    "G",      # flake8-logging-format
+    "INP",    # flake8-no-pep420
+    "PIE",    # flake8-pie
+    "T20",    # flake8-print
+    "PYI",    # flake8-pyi
+    "PT",     # flake8-pytest-style
+    "Q",      # flake8-quotes
+    "RSE",    # flake8-raise
+    "RET",    # flake8-return
+    "SLF",    # flake8-self
+    "SLOT",   # flake8-slots
+    "SIM",    # flake8-simplify
+    "TID",    # flake8-tidy-imports
+    "TCH",    # flake8-type-checking
+    "INT",    # flake8-gettext
+    "ARG",    # flake8-unused-arguments
+    "PTH",    # flake8-use-pathlib
+    "TD",     # flake8-todos
+    "FIX",    # flake8-fixme
+    "ERA",    # eradicate
+    "PD",     # pandas-vet
+    "PGH",    # pygrep-hooks
+    "PL",     # Pylint
+    "TRY",    # tryceratops
+    "FLY",    # flynt
+    "PERF",   # Perflint
+    "FURB",   # refurb
+    "RUF",    # Ruff-specific rules
+]
+ignore = [
+    "COM812",  # Trailing comma missing (conflicts with formatter)
+    "ISC001",  # Single line implicit string concatenation (conflicts with formatter)
+    "TD002",   # Missing author in TODO
+    "TD003",   # Missing issue link in TODO
+    "FIX002",  # Line contains TODO
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S101",    # Use of assert
+    "ARG001",  # Unused function argument (fixtures)
+    "ARG002",  # Unused method argument
+    "PLR2004", # Magic value comparison
+    "SLF001",  # Private member access
+]
+"src/paperless_ngx_smart_ocr/cli/**/*.py" = [
+    "T20",     # Allow print statements in CLI
+    "FBT001",  # Boolean-typed positional argument (common in typer callbacks)
+    "FBT002",  # Boolean default positional argument
+    "FBT003",  # Boolean positional value in function call
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["paperless_ngx_smart_ocr"]
+force-single-line = false
+lines-after-imports = 2
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.pylint]
+max-args = 6
+max-branches = 12
+max-returns = 6
+max-statements = 50
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = true
+
+# ============================================================================
+# Mypy Configuration - Strict Mode
+# ============================================================================
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+pretty = true
+show_error_codes = true
+show_error_context = true
+
+# Additional strict options beyond --strict
+warn_unused_configs = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+no_implicit_reexport = true
+strict_equality = true
+extra_checks = true
+
+# Plugins
+plugins = [
+    "pydantic.mypy",
+]
+
+[[tool.mypy.overrides]]
+module = [
+    "ocrmypdf.*",
+    "surya.*",
+    "marker.*",
+    "pymupdf.*",
+    "fitz.*",
+]
+ignore_missing_imports = true
+
+# ============================================================================
+# Pytest Configuration
+# ============================================================================
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = [
+    "-ra",
+    "-q",
+    "--strict-markers",
+    "--strict-config",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+]
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning",
+]
+
+# ============================================================================
+# Coverage Configuration
+# ============================================================================
+[tool.coverage.run]
+source = ["src/paperless_ngx_smart_ocr"]
+branch = true
+parallel = true
+omit = [
+    "*/__main__.py",
+]
+
+[tool.coverage.paths]
+source = [
+    "src/",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+fail_under = 80
+show_missing = true
