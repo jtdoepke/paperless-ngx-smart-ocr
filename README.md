@@ -558,10 +558,10 @@ Completed: Project initialized with uv, pyproject.toml configured with all depen
   - [ ] Configuration validation schemas
   - [ ] Environment variable interpolation (`${VAR}` syntax)
   - [ ] Secret file support (`token_file`)
-- [ ] **Logging setup** (`src/paperless_ngx_smart_ocr/observability/logging.py`)
-  - [ ] Structured JSON logging with structlog
-  - [ ] Configurable log levels and formatting
-  - [ ] Request ID tracking for correlation
+- [x] **Logging setup** (`src/paperless_ngx_smart_ocr/observability/logging.py`)
+  - [x] Structured logfmt-style logging with structlog (human + machine readable)
+  - [x] Configurable log levels and formatting (--verbose/-V, --quiet/-q CLI flags)
+  - [x] Request ID tracking for correlation via contextvars
 - [x] **Paperless-ngx client** (`src/paperless_ngx_smart_ocr/paperless/`)
   - [x] Async API client with httpx
   - [x] Document CRUD operations (list, get, update, download, upload)

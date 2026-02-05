@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime  # noqa: TC003
 from enum import StrEnum
-from typing import Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
@@ -21,9 +20,6 @@ __all__ = [
     "TaskState",
     "TaskStatus",
 ]
-
-
-T = TypeVar("T")
 
 
 class TaskState(StrEnum):
@@ -165,7 +161,7 @@ class DocumentUpdate(PaperlessBaseModel):
     owner: int | None = None
 
 
-class PaginatedResponse(PaperlessBaseModel, Generic[T]):
+class PaginatedResponse[T](PaperlessBaseModel):
     """Paginated response wrapper for list endpoints.
 
     Paperless-ngx returns paginated results for list operations.

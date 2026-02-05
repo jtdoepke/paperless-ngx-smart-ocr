@@ -8,38 +8,32 @@ paperless-ngx-smart-ocr is a Python service that enhances paperless-ngx with int
 - **Stage 1**: Add searchable text layers using OCRmyPDF + Surya layout detection
 - **Stage 2**: Convert to structured Markdown using Marker, store in paperless-ngx content field
 
-**Current Status**: Phase 2 in progress. The Paperless-ngx API client is implemented (`paperless/` module). Remaining: config module, logging setup, and phases 3-13. See README.md for the full implementation checklist.
+See README.md for the full implementation checklist and current status.
 
 ## Development Commands
 
 ```bash
-# Tool management (mise)
-mise install                    # Install Python 3.12 + uv + jq
-
-# Package management (uv)
+# Setup
+mise install                   # Install Python 3.12 + uv + jq
 uv sync --all-extras           # Install all dependencies including dev
-uv add <package>               # Add dependency
-uv add --dev <package>         # Add dev dependency
 
 # Running the application
 uv run smart-ocr serve         # Start web server with workers
 uv run smart-ocr process <id>  # Process single document
-uv run smart-ocr config        # Validate configuration
-uv run smart-ocr post-consume  # Post-consume script mode
+uv run smart-ocr --verbose     # Enable debug logging
+uv run smart-ocr --quiet       # Only warnings and errors
 
 # Testing
-uv run pytest                                              # Run all tests
+uv run pytest                              # Run all tests
+uv run pytest tests/unit/test_logging.py  # Run single test file
+uv run pytest -k "test_name"              # Run tests matching pattern
 uv run pytest --cov=paperless_ngx_smart_ocr --cov-report=html  # With coverage
-uv run pytest tests/unit/                                  # Unit tests only
-uv run pytest tests/integration/                           # Integration tests only
-uv run pytest -k "test_name"                              # Run specific test
 
-# Code quality
+# Code quality (run before committing)
 uv run ruff check .            # Lint code
+uv run ruff check --fix .      # Auto-fix lint issues
 uv run ruff format .           # Format code
 uv run mypy src/               # Type check (strict mode)
-
-# Pre-commit
 uv run pre-commit run --all-files  # Run all hooks
 ```
 
@@ -63,20 +57,15 @@ Three ways to trigger processing:
 2. **Webhook**: paperless-ngx Workflow sends POST on document events
 3. **Post-consume**: CLI runs synchronously after document consumption
 
-### Key Components
+### Key Modules
 
-```
-src/paperless_ngx_smart_ocr/
-├── config/          # Pydantic settings (YAML + env vars) - stub
-├── paperless/       # Async API client for paperless-ngx (IMPLEMENTED)
-│   ├── client.py           # PaperlessClient - async httpx client
-│   ├── models.py           # Pydantic models (Document, Tag, etc.)
-│   └── exceptions.py       # Exception hierarchy
-├── pipeline/        # Processing stages - stub
-├── workers/         # Integration implementations - stub
-├── web/             # FastAPI + htmx + Tailwind - stub
-└── cli/             # Typer CLI (entry point: smart-ocr)
-```
+- **`paperless/`** - Async API client for paperless-ngx (PaperlessClient, Document/Tag models)
+- **`observability/`** - Logging with structlog, request ID tracking
+- **`config/`** - Pydantic settings (YAML + env vars)
+- **`pipeline/`** - OCR and Markdown processing stages
+- **`workers/`** - Polling, webhook, post-consume integrations
+- **`web/`** - FastAPI + htmx + Tailwind UI
+- **`cli/`** - Typer CLI (entry point: `smart-ocr`)
 
 ### Paperless-ngx Client Usage
 
@@ -84,34 +73,27 @@ src/paperless_ngx_smart_ocr/
 from paperless_ngx_smart_ocr.paperless import PaperlessClient, DocumentUpdate
 
 async with PaperlessClient(base_url, token) as client:
-    # List documents filtered by tags
     docs = await client.list_documents(tags_include=[1], tags_exclude=[2])
-
-    # Download document (streaming)
-    async with client.download_document(doc_id) as response:
-        content = await response.aread()
-
-    # Update document content
     await client.update_document(doc_id, DocumentUpdate(content=markdown))
-
-    # Tag management
     tag = await client.ensure_tag("smart-ocr:pending")
     await client.add_tags_to_document(doc_id, [tag.id])
 ```
 
-## Technology Stack
+### Logging Usage
 
-- **Python 3.12+** with strict mypy type checking
-- **mise** for tool/runtime management (.mise.toml)
-- **uv** for package management
-- **ruff** for linting/formatting (strict mode, comprehensive rules)
-- **FastAPI** + uvicorn for web framework
-- **htmx** + Tailwind CSS for frontend (minimal JS)
-- **httpx** for async HTTP client
-- **Pydantic v2** for settings and validation
-- **pytest** + pytest-asyncio + respx for testing (80% coverage target)
-- **structlog** for JSON structured logging
-- **OCRmyPDF** + Surya + Marker for PDF processing
+```python
+from paperless_ngx_smart_ocr.observability import configure_logging, get_logger, set_request_id
+
+configure_logging(level="debug")  # At startup
+logger = get_logger(__name__)
+set_request_id()  # For request correlation
+logger.info("processing_document", document_id=123, stage="ocr")
+```
+
+Output (logfmt, auto-detects TTY for colors):
+```
+timestamp=2024-01-15T10:30:45Z level=info event=processing_document document_id=123 request_id=abc12345
+```
 
 ## Code Style
 
@@ -119,6 +101,7 @@ async with PaperlessClient(base_url, token) as client:
 - Empty modules define `__all__: list[str] = []`
 - PEP 561 type checking enabled (py.typed marker)
 - Google-style docstrings
+- Python 3.12+ features (e.g., `class Foo[T]` for generics)
 
 ## Design Principles
 

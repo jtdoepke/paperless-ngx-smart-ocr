@@ -5,6 +5,7 @@ from __future__ import annotations
 import typer
 
 from paperless_ngx_smart_ocr import __version__
+from paperless_ngx_smart_ocr.observability import LogLevel, configure_logging
 
 
 app = typer.Typer(
@@ -31,8 +32,35 @@ def main(
         callback=version_callback,
         is_eager=True,
     ),
+    verbose: bool = typer.Option(  # noqa: FBT001
+        False,  # noqa: FBT003
+        "--verbose",
+        "-V",
+        help="Enable verbose (debug) logging.",
+    ),
+    quiet: bool = typer.Option(  # noqa: FBT001
+        False,  # noqa: FBT003
+        "--quiet",
+        "-q",
+        help="Only show warnings and errors.",
+    ),
 ) -> None:
     """paperless-ngx-smart-ocr CLI."""
+    del version  # Handled by callback
+
+    # Determine log level from flags
+    if verbose and quiet:
+        typer.echo("Error: --verbose and --quiet are mutually exclusive.", err=True)
+        raise typer.Exit(1)
+
+    if verbose:
+        level = LogLevel.DEBUG
+    elif quiet:
+        level = LogLevel.WARNING
+    else:
+        level = LogLevel.INFO
+
+    configure_logging(level=level)
 
 
 @app.command()
