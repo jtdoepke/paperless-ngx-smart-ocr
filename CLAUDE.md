@@ -8,7 +8,7 @@ paperless-ngx-smart-ocr is a Python service that enhances paperless-ngx with int
 - **Stage 1**: Add searchable text layers using OCRmyPDF + Surya layout detection
 - **Stage 2**: Convert to structured Markdown using Marker, store in paperless-ngx content field
 
-**Current Status**: Phase 1 complete (project foundation with stub modules). Implementation phases 2-13 remain. The directory structure exists but modules contain only `__init__.py` stubs.
+**Current Status**: Phase 2 in progress. The Paperless-ngx API client is implemented (`paperless/` module). Remaining: config module, logging setup, and phases 3-13. See README.md for the full implementation checklist.
 
 ## Development Commands
 
@@ -63,26 +63,41 @@ Three ways to trigger processing:
 2. **Webhook**: paperless-ngx Workflow sends POST on document events
 3. **Post-consume**: CLI runs synchronously after document consumption
 
-### Key Components (Planned Architecture)
+### Key Components
 
 ```
 src/paperless_ngx_smart_ocr/
-├── config/          # Pydantic settings (YAML + env vars)
-├── paperless/       # Async API client for paperless-ngx (httpx)
-├── pipeline/        # Processing stages
-│   ├── orchestrator.py     # Stage coordination
-│   ├── stage1_ocr.py       # OCRmyPDF + Surya
-│   ├── stage2_markdown.py  # Marker conversion
-│   └── layout.py           # Surya layout detection
-├── workers/         # Integration implementations
-│   ├── queue.py     # Background job queue (asyncio)
-│   ├── polling.py   # Polling loop
-│   └── webhook.py   # Webhook handler
-├── web/             # FastAPI + htmx + Tailwind
+├── config/          # Pydantic settings (YAML + env vars) - stub
+├── paperless/       # Async API client for paperless-ngx (IMPLEMENTED)
+│   ├── client.py           # PaperlessClient - async httpx client
+│   ├── models.py           # Pydantic models (Document, Tag, etc.)
+│   └── exceptions.py       # Exception hierarchy
+├── pipeline/        # Processing stages - stub
+├── workers/         # Integration implementations - stub
+├── web/             # FastAPI + htmx + Tailwind - stub
 └── cli/             # Typer CLI (entry point: smart-ocr)
 ```
 
-Note: Currently only stub `__init__.py` files exist. See README.md for the full implementation checklist.
+### Paperless-ngx Client Usage
+
+```python
+from paperless_ngx_smart_ocr.paperless import PaperlessClient, DocumentUpdate
+
+async with PaperlessClient(base_url, token) as client:
+    # List documents filtered by tags
+    docs = await client.list_documents(tags_include=[1], tags_exclude=[2])
+
+    # Download document (streaming)
+    async with client.download_document(doc_id) as response:
+        content = await response.aread()
+
+    # Update document content
+    await client.update_document(doc_id, DocumentUpdate(content=markdown))
+
+    # Tag management
+    tag = await client.ensure_tag("smart-ocr:pending")
+    await client.add_tags_to_document(doc_id, [tag.id])
+```
 
 ## Technology Stack
 

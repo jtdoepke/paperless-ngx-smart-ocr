@@ -14,7 +14,7 @@ app = typer.Typer(
 )
 
 
-def version_callback(value: bool) -> None:
+def version_callback(value: bool) -> None:  # noqa: FBT001
     """Print version and exit."""
     if value:
         typer.echo(f"smart-ocr version {__version__}")
@@ -23,8 +23,8 @@ def version_callback(value: bool) -> None:
 
 @app.callback()
 def main(
-    version: bool = typer.Option(
-        False,
+    version: bool = typer.Option(  # noqa: FBT001
+        False,  # noqa: FBT003
         "--version",
         "-v",
         help="Show version and exit.",

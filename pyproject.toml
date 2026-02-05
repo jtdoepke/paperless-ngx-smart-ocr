@@ -166,17 +166,11 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = [
-    "S101",    # Use of assert
-    "ARG001",  # Unused function argument (fixtures)
-    "ARG002",  # Unused method argument
-    "PLR2004", # Magic value comparison
-    "SLF001",  # Private member access
-]
-"src/paperless_ngx_smart_ocr/cli/**/*.py" = [
-    "T20",     # Allow print statements in CLI
-    "FBT001",  # Boolean-typed positional argument (common in typer callbacks)
-    "FBT002",  # Boolean default positional argument
-    "FBT003",  # Boolean positional value in function call
+    "S101",    # Use of assert - standard in tests
+    "ARG001",  # Unused function argument - fixtures
+    "ARG002",  # Unused method argument - fixtures
+    "PLR2004", # Magic value comparison - test assertions
+    "SLF001",  # Private member access - testing internals
 ]
 
 [tool.ruff.lint.isort]

@@ -42,7 +42,9 @@ repos:
     hooks:
       - id: mypy
         additional_dependencies:
+          - httpx>=0.28.0
           - pydantic>=2.10.0
+          - structlog>=24.4.0
           - types-pyyaml>=6.0.12
           - typer>=0.15.0
         args: [--config-file=pyproject.toml]

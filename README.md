@@ -562,13 +562,13 @@ Completed: Project initialized with uv, pyproject.toml configured with all depen
   - [ ] Structured JSON logging with structlog
   - [ ] Configurable log levels and formatting
   - [ ] Request ID tracking for correlation
-- [ ] **Paperless-ngx client** (`src/paperless_ngx_smart_ocr/paperless/`)
-  - [ ] Async API client with httpx
-  - [ ] Document CRUD operations (list, get, update, download, upload)
-  - [ ] Tag management (list, create, add/remove from documents)
-  - [ ] File download/upload with streaming
-  - [ ] Retry logic with exponential backoff
-  - [ ] Rate limiting support
+- [x] **Paperless-ngx client** (`src/paperless_ngx_smart_ocr/paperless/`)
+  - [x] Async API client with httpx
+  - [x] Document CRUD operations (list, get, update, download, upload)
+  - [x] Tag management (list, create, add/remove from documents)
+  - [x] File download/upload with streaming
+  - [x] Retry logic with exponential backoff
+  - [x] Rate limiting support
 
 ### Phase 3: Processing Pipeline
 
