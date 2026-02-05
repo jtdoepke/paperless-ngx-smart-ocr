@@ -62,6 +62,7 @@ Three ways to trigger processing:
 - **`config/`** - Pydantic settings with YAML + env vars, `${VAR}` interpolation, secret file support
 - **`paperless/`** - Async API client for paperless-ngx (PaperlessClient, Document/Tag models)
 - **`observability/`** - Structured logging with structlog, request ID tracking
+- **`workers/`** - Background job queue (JobQueue wrapping aiojobs), job status tracking
 - **`cli/`** - Typer CLI (entry point: `smart-ocr`)
 
 ### Module Usage Examples
@@ -110,6 +111,32 @@ logger.info("processing_document", document_id=123, stage="ocr")
 Output (logfmt, auto-detects TTY for colors):
 ```
 timestamp=2024-01-15T10:30:45Z level=info event=processing_document document_id=123 request_id=abc12345
+```
+
+#### Job Queue
+
+```python
+from paperless_ngx_smart_ocr.workers import JobQueue, JobStatus
+
+async with JobQueue(workers=4, timeout=600) as queue:
+    # Submit a background job
+    job = await queue.submit(
+        process_document(doc_id),
+        name="Process document 123",
+        document_id=doc_id,
+    )
+
+    # Wait for completion
+    completed = await queue.wait(job.id)
+    if completed.status == JobStatus.COMPLETED:
+        print(f"Result: {completed.result.value}")
+
+    # Or cancel a running job
+    await queue.cancel(job.id)
+
+    # List jobs by status
+    active_jobs = await queue.list_active()
+    pending_jobs = await queue.list_pending()
 ```
 
 ## Code Style

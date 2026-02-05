@@ -614,18 +614,18 @@ Completed: Project initialized with uv, pyproject.toml configured with all depen
   - [ ] Environment variable parsing (DOCUMENT_ID, etc.)
   - [ ] Synchronous processing mode
 
-### Phase 5: Background Processing
+### Phase 5: Background Processing ✓
 
-- [ ] **Job queue** (`src/paperless_ngx_smart_ocr/workers/queue.py`)
-  - [ ] In-memory async queue with asyncio
-  - [ ] Job status tracking (pending, running, completed, failed)
-  - [ ] Configurable concurrent workers
-  - [ ] Timeout handling per job
-- [ ] **Job management**
-  - [ ] Queue new jobs
-  - [ ] Cancel running jobs
-  - [ ] Get job status by ID
-  - [ ] List active/completed jobs
+- [x] **Job queue** (`src/paperless_ngx_smart_ocr/workers/queue.py`)
+  - [x] In-memory async queue with asyncio (using aiojobs)
+  - [x] Job status tracking (pending, running, completed, failed, cancelled)
+  - [x] Configurable concurrent workers
+  - [x] Timeout handling per job
+- [x] **Job management**
+  - [x] Queue new jobs
+  - [x] Cancel running jobs
+  - [x] Get job status by ID
+  - [x] List active/completed jobs
 
 ### Phase 6: Web UI
 
