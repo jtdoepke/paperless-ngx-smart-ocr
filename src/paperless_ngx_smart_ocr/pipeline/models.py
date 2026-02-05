@@ -25,6 +25,7 @@ __all__ = [
     "PageAnalysis",
     "RegionLabel",
     "Stage1Result",
+    "Stage2Result",
 ]
 
 
@@ -351,4 +352,66 @@ class Stage1Result:
             "layout_results_count": (
                 len(self.layout_results) if self.layout_results else 0
             ),
+        }
+
+
+@dataclass(slots=True)
+class Stage2Result:
+    """Result of Stage 2 Markdown conversion.
+
+    Captures the outcome of processing a document through the Markdown
+    conversion pipeline, including success/failure status, timing, and
+    the extracted Markdown content.
+
+    Attributes:
+        success: Whether processing completed successfully.
+        input_path: Path to the input PDF file.
+        markdown: Extracted Markdown content.
+        page_count: Number of pages processed.
+        images: Extracted images as block_id -> base64 string mapping.
+        metadata: Marker metadata (table of contents, page stats).
+        llm_used: Whether LLM assistance was used for conversion.
+        skipped: Whether processing was skipped.
+        skip_reason: Human-readable reason for skipping, if applicable.
+        error: Error message if processing failed.
+        processing_time_seconds: Total processing time in seconds.
+        created_at: Timestamp when processing started.
+    """
+
+    success: bool
+    input_path: Path
+    markdown: str
+    page_count: int
+    images: dict[str, str]
+    metadata: dict[str, Any]
+    llm_used: bool
+    skipped: bool
+    skip_reason: str | None
+    error: str | None = None
+    processing_time_seconds: float = 0.0
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+    @property
+    def is_terminal(self) -> bool:
+        """Whether this result represents a terminal state."""
+        return self.success or self.error is not None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to a dictionary for serialization.
+
+        Returns:
+            Dictionary representation suitable for JSON serialization.
+        """
+        return {
+            "success": self.success,
+            "input_path": str(self.input_path),
+            "markdown_length": len(self.markdown),
+            "page_count": self.page_count,
+            "images_count": len(self.images),
+            "llm_used": self.llm_used,
+            "skipped": self.skipped,
+            "skip_reason": self.skip_reason,
+            "error": self.error,
+            "processing_time_seconds": self.processing_time_seconds,
+            "created_at": self.created_at.isoformat(),
         }

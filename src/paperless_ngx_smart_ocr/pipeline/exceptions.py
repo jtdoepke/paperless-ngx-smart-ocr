@@ -9,6 +9,7 @@ from __future__ import annotations
 
 __all__ = [
     "LayoutDetectionError",
+    "MarkerConversionError",
     "OCRError",
     "PipelineError",
     "PreprocessingError",
@@ -139,3 +140,31 @@ class OCRError(PipelineError):
         if self.exit_code is not None:
             return f"{self.message} (exit_code={self.exit_code})"
         return self.message
+
+
+class MarkerConversionError(PipelineError):
+    """Error during Marker PDF-to-Markdown conversion.
+
+    Raised when Marker fails to convert a PDF document to Markdown.
+
+    Attributes:
+        message: Human-readable error description.
+        cause: The underlying exception that caused this error.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        cause: BaseException | None = None,
+    ) -> None:
+        """Initialize the exception.
+
+        Args:
+            message: Human-readable error description.
+            cause: The underlying exception that caused this error.
+        """
+        super().__init__(message)
+        self.cause = cause
+        if cause is not None:
+            self.__cause__ = cause

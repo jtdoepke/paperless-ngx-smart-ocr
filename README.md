@@ -580,11 +580,11 @@ Completed: Project initialized with uv, pyproject.toml configured with all depen
   - [x] Per-region OCR with appropriate PSM modes
   - [x] Text layer composition with correct reading order
   - [x] Born-digital detection (check for existing text)
-- [ ] **Stage 2: Markdown Pipeline** (`src/paperless_ngx_smart_ocr/pipeline/stage2_markdown.py`)
-  - [ ] Marker integration
-  - [ ] LLM toggle support (configurable on/off)
-  - [ ] Markdown post-processing and cleanup
-  - [ ] Content field patching via paperless API
+- [x] **Stage 2: Markdown Pipeline** (`src/paperless_ngx_smart_ocr/pipeline/stage2_markdown.py`)
+  - [x] Marker integration
+  - [x] LLM toggle support (configurable on/off)
+  - [x] Markdown post-processing and cleanup
+  - [x] Content field patching via paperless API
 - [ ] **Pipeline orchestrator** (`src/paperless_ngx_smart_ocr/pipeline/orchestrator.py`)
   - [ ] Stage coordination and sequencing
   - [ ] Skip logic based on configuration

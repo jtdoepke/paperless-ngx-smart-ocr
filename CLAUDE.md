@@ -63,7 +63,7 @@ Three ways to trigger processing:
 - **`paperless/`** - Async API client for paperless-ngx (PaperlessClient, Document/Tag models)
 - **`observability/`** - Structured logging with structlog, request ID tracking
 - **`workers/`** - Background job queue (JobQueue wrapping aiojobs), job status tracking
-- **`pipeline/`** - OCR processing pipeline (Stage1Processor, LayoutDetector, preprocessing)
+- **`pipeline/`** - Two-stage processing pipeline (Stage1Processor for OCR, Stage2Processor for Markdown)
 - **`cli/`** - Typer CLI (entry point: `smart-ocr`)
 
 ### Module Usage Examples
@@ -166,6 +166,36 @@ result = await process_stage1(
 
 if result.success:
     print(f"OCR completed: {result.pages_processed} pages")
+elif result.skipped:
+    print(f"Skipped: {result.skip_reason}")
+```
+
+#### Pipeline (Stage 2 Markdown)
+
+```python
+from paperless_ngx_smart_ocr.config import get_settings
+from paperless_ngx_smart_ocr.pipeline import (
+    Stage2Processor,
+    process_stage2,
+    get_marker_models,
+    postprocess_markdown,
+)
+
+# Pre-load Marker models (cached singleton, expensive first call)
+await get_marker_models()
+
+# Process through Stage 2 Markdown conversion
+settings = get_settings()
+result = await process_stage2(
+    pdf_path,
+    config=settings.pipeline.stage2,
+    gpu_mode=settings.gpu.enabled,
+)
+
+if result.success:
+    print(f"Converted {result.page_count} pages")
+    print(f"LLM used: {result.llm_used}")
+    print(result.markdown[:500])
 elif result.skipped:
     print(f"Skipped: {result.skip_reason}")
 ```
