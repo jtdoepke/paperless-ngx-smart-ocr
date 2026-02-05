@@ -63,6 +63,7 @@ Three ways to trigger processing:
 - **`paperless/`** - Async API client for paperless-ngx (PaperlessClient, Document/Tag models)
 - **`observability/`** - Structured logging with structlog, request ID tracking
 - **`workers/`** - Background job queue (JobQueue wrapping aiojobs), job status tracking
+- **`pipeline/`** - OCR processing pipeline (Stage1Processor, LayoutDetector, preprocessing)
 - **`cli/`** - Typer CLI (entry point: `smart-ocr`)
 
 ### Module Usage Examples
@@ -137,6 +138,36 @@ async with JobQueue(workers=4, timeout=600) as queue:
     # List jobs by status
     active_jobs = await queue.list_active()
     pending_jobs = await queue.list_pending()
+```
+
+#### Pipeline (Stage 1 OCR)
+
+```python
+from paperless_ngx_smart_ocr.config import get_settings
+from paperless_ngx_smart_ocr.pipeline import (
+    Stage1Processor,
+    analyze_document,
+    process_stage1,
+)
+
+# Analyze document for born-digital detection
+analysis = analyze_document(pdf_path)
+if analysis.is_born_digital:
+    print("Document already has text layer")
+
+# Process through Stage 1 OCR
+settings = get_settings()
+result = await process_stage1(
+    input_path,
+    output_path,
+    config=settings.pipeline.stage1,
+    gpu_mode=settings.gpu.enabled,
+)
+
+if result.success:
+    print(f"OCR completed: {result.pages_processed} pages")
+elif result.skipped:
+    print(f"Skipped: {result.skip_reason}")
 ```
 
 ## Code Style

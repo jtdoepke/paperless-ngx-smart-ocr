@@ -110,7 +110,7 @@ def _interpolate_env_vars(value: object) -> object:
 # ---------------------------------------------------------------------------
 
 
-class _InterpolatingYamlConfigSettingsSource(YamlConfigSettingsSource):  # type: ignore[misc]
+class _InterpolatingYamlConfigSettingsSource(YamlConfigSettingsSource):
     """YAML settings source with ${VAR} interpolation support.
 
     Extends the standard YamlConfigSettingsSource to perform environment
@@ -161,7 +161,7 @@ class _InterpolatingYamlConfigSettingsSource(YamlConfigSettingsSource):  # type:
 # ---------------------------------------------------------------------------
 
 
-class Settings(BaseSettings):  # type: ignore[misc]
+class Settings(BaseSettings):
     """Application settings loaded from YAML file and environment variables.
 
     Settings are loaded in priority order (highest to lowest):

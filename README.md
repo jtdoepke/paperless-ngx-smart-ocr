@@ -572,14 +572,14 @@ Completed: Project initialized with uv, pyproject.toml configured with all depen
 
 ### Phase 3: Processing Pipeline
 
-- [ ] **Stage 1: OCR Pipeline** (`src/paperless_ngx_smart_ocr/pipeline/stage1_ocr.py`)
-  - [ ] Surya layout detection integration
-  - [ ] Region filtering (exclude advertisements, noise, headers, footers)
-  - [ ] Reading order determination from layout
-  - [ ] OCRmyPDF integration with configurable options
-  - [ ] Per-region OCR with appropriate PSM modes
-  - [ ] Text layer composition with correct reading order
-  - [ ] Born-digital detection (check for existing text)
+- [x] **Stage 1: OCR Pipeline** (`src/paperless_ngx_smart_ocr/pipeline/stage1_ocr.py`)
+  - [x] Surya layout detection integration
+  - [x] Region filtering (exclude advertisements, noise, headers, footers)
+  - [x] Reading order determination from layout
+  - [x] OCRmyPDF integration with configurable options
+  - [x] Per-region OCR with appropriate PSM modes
+  - [x] Text layer composition with correct reading order
+  - [x] Born-digital detection (check for existing text)
 - [ ] **Stage 2: Markdown Pipeline** (`src/paperless_ngx_smart_ocr/pipeline/stage2_markdown.py`)
   - [ ] Marker integration
   - [ ] LLM toggle support (configurable on/off)
@@ -590,13 +590,13 @@ Completed: Project initialized with uv, pyproject.toml configured with all depen
   - [ ] Skip logic based on configuration
   - [ ] Error handling and recovery
   - [ ] Progress tracking and reporting
-- [ ] **Layout detection** (`src/paperless_ngx_smart_ocr/pipeline/layout.py`)
-  - [ ] Surya model loading and caching
-  - [ ] Confidence thresholding
-  - [ ] Region type classification
-- [ ] **Preprocessing** (`src/paperless_ngx_smart_ocr/pipeline/preprocessing.py`)
-  - [ ] PDF text layer detection
-  - [ ] Document analysis for stage determination
+- [x] **Layout detection** (`src/paperless_ngx_smart_ocr/pipeline/layout.py`)
+  - [x] Surya model loading and caching
+  - [x] Confidence thresholding
+  - [x] Region type classification
+- [x] **Preprocessing** (`src/paperless_ngx_smart_ocr/pipeline/preprocessing.py`)
+  - [x] PDF text layer detection
+  - [x] Document analysis for stage determination
 
 ### Phase 4: Integration Patterns
 
