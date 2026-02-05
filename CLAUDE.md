@@ -8,13 +8,13 @@ paperless-ngx-smart-ocr is a Python service that enhances paperless-ngx with int
 - **Stage 1**: Add searchable text layers using OCRmyPDF + Surya layout detection
 - **Stage 2**: Convert to structured Markdown using Marker, store in paperless-ngx content field
 
-**Current Status**: Phase 1 complete (project foundation). Implementation phases 2-13 remain.
+**Current Status**: Phase 1 complete (project foundation with stub modules). Implementation phases 2-13 remain. The directory structure exists but modules contain only `__init__.py` stubs.
 
 ## Development Commands
 
 ```bash
 # Tool management (mise)
-mise install                    # Install Python 3.12 + uv
+mise install                    # Install Python 3.12 + uv + jq
 
 # Package management (uv)
 uv sync --all-extras           # Install all dependencies including dev
@@ -63,7 +63,7 @@ Three ways to trigger processing:
 2. **Webhook**: paperless-ngx Workflow sends POST on document events
 3. **Post-consume**: CLI runs synchronously after document consumption
 
-### Key Components
+### Key Components (Planned Architecture)
 
 ```
 src/paperless_ngx_smart_ocr/
@@ -81,6 +81,8 @@ src/paperless_ngx_smart_ocr/
 ├── web/             # FastAPI + htmx + Tailwind
 └── cli/             # Typer CLI (entry point: smart-ocr)
 ```
+
+Note: Currently only stub `__init__.py` files exist. See README.md for the full implementation checklist.
 
 ## Technology Stack
 
