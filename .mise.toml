@@ -1,4 +1,11 @@
+[env]
+_.file = ".env"
+
 [tools]
 python = "3.12"
 uv = "latest"
 jq = "latest"
+
+[tasks.serve]
+description = "Start the web server"
+run = "uv run smart-ocr serve"
