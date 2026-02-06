@@ -15,6 +15,7 @@ __all__ = [
     "DocumentType",
     "DocumentUpdate",
     "PaginatedResponse",
+    "StoragePath",
     "Tag",
     "TagCreate",
     "TaskState",
@@ -91,6 +92,21 @@ class DocumentType(PaperlessBaseModel):
     id: int
     slug: str
     name: str
+    match: str = ""
+    matching_algorithm: int = Field(default=0)
+    is_insensitive: bool = Field(default=True)
+    document_count: int = Field(default=0)
+    owner: int | None = None
+    user_can_change: bool = Field(default=True)
+
+
+class StoragePath(PaperlessBaseModel):
+    """Represents a storage path in Paperless-ngx."""
+
+    id: int
+    slug: str
+    name: str
+    path: str = ""
     match: str = ""
     matching_algorithm: int = Field(default=0)
     is_insensitive: bool = Field(default=True)

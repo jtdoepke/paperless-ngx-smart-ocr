@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
 
 import pytest
@@ -46,9 +47,19 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture(autouse=True)
-def clean_settings() -> Generator[None, None, None]:
-    """Clear settings cache before and after each test."""
+def clean_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Generator[None, None, None]:
+    """Clear settings cache and SMARTOCR_* env vars for each test.
+
+    The .env file may set SMARTOCR_PAPERLESS__URL, SMARTOCR_PAPERLESS__TOKEN,
+    and similar vars. These must be cleared so pydantic-settings does not
+    pick them up and contaminate tests that expect default or YAML values.
+    """
     clear_settings_cache()
+    for key in list(os.environ):
+        if key.startswith("SMARTOCR_") or key == "PAPERLESS_TOKEN":
+            monkeypatch.delenv(key)
     yield
     clear_settings_cache()
 

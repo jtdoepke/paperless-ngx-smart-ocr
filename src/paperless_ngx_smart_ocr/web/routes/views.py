@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import asyncio
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Form, Path, Query, Request
 from fastapi.responses import HTMLResponse
@@ -18,6 +19,8 @@ from paperless_ngx_smart_ocr.workers.models import JobStatus
 
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from fastapi.templating import Jinja2Templates
     from starlette.responses import Response
 
@@ -56,6 +59,21 @@ def _is_htmx(request: Request) -> bool:
 def _ctx(request: Request, **kwargs: object) -> dict[str, object]:
     """Build a template context dict with the request included."""
     return {"request": request, **kwargs}
+
+
+def _resolve_name(
+    resolved: dict[str, Any],
+    key: str,
+) -> str | None:
+    """Extract a name from a resolved lookup dict.
+
+    Returns None if the key is missing or the result was an exception.
+    """
+    obj = resolved.get(key)
+    if obj is None or isinstance(obj, BaseException):
+        return None
+    name = getattr(obj, "name", None)
+    return name if isinstance(name, str) else None
 
 
 def _render(
@@ -241,12 +259,18 @@ async def document_list(  # noqa: PLR0913
     )
 
 
-@router.get("/documents/{document_id}", response_class=HTMLResponse)
+@router.get(
+    "/documents/{document_id}",
+    response_class=HTMLResponse,
+)
 async def document_detail(
     request: Request,
     document_id: int = Path(...),
 ) -> Response:
     """Render the document detail page.
+
+    Fetches the document, metadata, and resolves tag/correspondent/
+    document-type/storage-path names in parallel.
 
     Args:
         request: The incoming HTTP request.
@@ -259,7 +283,10 @@ async def document_detail(
     settings: Settings = request.app.state.settings
 
     try:
-        doc = await client.get_document(document_id)
+        doc, metadata = await asyncio.gather(
+            client.get_document(document_id),
+            client.get_document_metadata(document_id),
+        )
     except PaperlessNotFoundError:
         templates = _get_templates(request)
         return templates.TemplateResponse(
@@ -271,13 +298,115 @@ async def document_detail(
             status_code=404,
         )
 
+    # Resolve names in parallel (graceful on errors)
+    lookups: dict[str, Any] = {}
+    if doc.correspondent is not None:
+        lookups["correspondent"] = client.get_correspondent(
+            doc.correspondent,
+        )
+    if doc.document_type is not None:
+        lookups["document_type"] = client.get_document_type(
+            doc.document_type,
+        )
+    if doc.storage_path is not None:
+        lookups["storage_path"] = client.get_storage_path(
+            doc.storage_path,
+        )
+    for tag_id in doc.tags:
+        lookups[f"tag_{tag_id}"] = client.get_tag(tag_id)
+
+    resolved: dict[str, Any] = {}
+    if lookups:
+        keys = list(lookups.keys())
+        results = await asyncio.gather(
+            *lookups.values(),
+            return_exceptions=True,
+        )
+        resolved = dict(zip(keys, results, strict=True))
+
+    correspondent_name = _resolve_name(
+        resolved,
+        "correspondent",
+    )
+    document_type_name = _resolve_name(
+        resolved,
+        "document_type",
+    )
+    storage_path_name = _resolve_name(
+        resolved,
+        "storage_path",
+    )
+
+    tag_names = []
+    for tag_id in doc.tags:
+        obj = resolved.get(f"tag_{tag_id}")
+        if obj is None or isinstance(obj, BaseException):
+            tag_names.append(
+                {"id": tag_id, "name": f"#{tag_id}"},
+            )
+        else:
+            tag_names.append(
+                {
+                    "id": obj.id,
+                    "name": obj.name,
+                    "color": obj.color,
+                    "text_color": obj.text_color,
+                }
+            )
+
     return _render(
         request,
         "documents/detail.html",
         None,
         document=doc,
+        metadata=metadata,
+        correspondent_name=correspondent_name,
+        document_type_name=document_type_name,
+        storage_path_name=storage_path_name,
+        tag_names=tag_names,
         stage1_enabled=settings.pipeline.stage1.enabled,
         stage2_enabled=settings.pipeline.stage2.enabled,
+    )
+
+
+@router.get("/documents/{document_id}/pdf")
+async def document_pdf_proxy(
+    request: Request,
+    document_id: int = Path(...),
+) -> Response:
+    """Proxy PDF download from paperless-ngx.
+
+    Streams the document PDF so the browser's built-in viewer
+    can display it in an iframe without needing a paperless-ngx
+    auth token.
+
+    Args:
+        request: The incoming HTTP request.
+        document_id: The paperless-ngx document ID.
+
+    Returns:
+        Streaming PDF response.
+    """
+    from starlette.responses import (
+        StreamingResponse,
+    )
+
+    client: PaperlessClient = request.app.state.client
+
+    async def _stream() -> AsyncIterator[bytes]:
+        async with client.download_document(
+            document_id,
+            original=True,
+        ) as resp:
+            async for chunk in resp.aiter_bytes(
+                chunk_size=65536,
+            ):
+                yield chunk
+
+    return StreamingResponse(
+        _stream(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": "inline"},
     )
 
 

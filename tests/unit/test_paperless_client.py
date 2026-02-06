@@ -12,8 +12,10 @@ import pytest
 import respx  # noqa: TC002
 
 from paperless_ngx_smart_ocr.paperless import (
+    Correspondent,
     Document,
     DocumentMetadata,
+    DocumentType,
     DocumentUpdate,
     PaginatedResponse,
     PaperlessAuthenticationError,
@@ -23,6 +25,7 @@ from paperless_ngx_smart_ocr.paperless import (
     PaperlessRateLimitError,
     PaperlessServerError,
     PaperlessValidationError,
+    StoragePath,
     Tag,
     TagCreate,
     TaskState,
@@ -956,3 +959,164 @@ class TestGetTag:
 
         assert tag.id == 1
         assert tag.name == "smart-ocr:pending"
+
+
+# ---------------------------------------------------------------------------
+# TestGetCorrespondent
+# ---------------------------------------------------------------------------
+
+
+class TestGetCorrespondent:
+    """Tests for get_correspondent method."""
+
+    @pytest.mark.respx(base_url="http://paperless.test:8000")
+    async def test_get_correspondent(
+        self,
+        client: PaperlessClient,
+        respx_mock: respx.MockRouter,
+    ) -> None:
+        """Test getting a single correspondent by ID."""
+        respx_mock.get("/api/correspondents/1/").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "slug": "acme-corp",
+                    "name": "ACME Corp",
+                    "match": "",
+                    "matching_algorithm": 0,
+                    "is_insensitive": True,
+                    "document_count": 10,
+                    "owner": 1,
+                    "user_can_change": True,
+                },
+            ),
+        )
+
+        result = await client.get_correspondent(1)
+
+        assert isinstance(result, Correspondent)
+        assert result.id == 1
+        assert result.name == "ACME Corp"
+
+    @pytest.mark.respx(base_url="http://paperless.test:8000")
+    async def test_not_found(
+        self,
+        client: PaperlessClient,
+        respx_mock: respx.MockRouter,
+    ) -> None:
+        """Missing correspondent raises PaperlessNotFoundError."""
+        respx_mock.get("/api/correspondents/999/").mock(
+            return_value=httpx.Response(404),
+        )
+
+        with pytest.raises(PaperlessNotFoundError):
+            await client.get_correspondent(999)
+
+
+# ---------------------------------------------------------------------------
+# TestGetDocumentType
+# ---------------------------------------------------------------------------
+
+
+class TestGetDocumentType:
+    """Tests for get_document_type method."""
+
+    @pytest.mark.respx(base_url="http://paperless.test:8000")
+    async def test_get_document_type(
+        self,
+        client: PaperlessClient,
+        respx_mock: respx.MockRouter,
+    ) -> None:
+        """Test getting a single document type by ID."""
+        respx_mock.get("/api/document_types/2/").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 2,
+                    "slug": "invoice",
+                    "name": "Invoice",
+                    "match": "",
+                    "matching_algorithm": 0,
+                    "is_insensitive": True,
+                    "document_count": 5,
+                    "owner": 1,
+                    "user_can_change": True,
+                },
+            ),
+        )
+
+        result = await client.get_document_type(2)
+
+        assert isinstance(result, DocumentType)
+        assert result.id == 2
+        assert result.name == "Invoice"
+
+    @pytest.mark.respx(base_url="http://paperless.test:8000")
+    async def test_not_found(
+        self,
+        client: PaperlessClient,
+        respx_mock: respx.MockRouter,
+    ) -> None:
+        """Missing document type raises PaperlessNotFoundError."""
+        respx_mock.get("/api/document_types/999/").mock(
+            return_value=httpx.Response(404),
+        )
+
+        with pytest.raises(PaperlessNotFoundError):
+            await client.get_document_type(999)
+
+
+# ---------------------------------------------------------------------------
+# TestGetStoragePath
+# ---------------------------------------------------------------------------
+
+
+class TestGetStoragePath:
+    """Tests for get_storage_path method."""
+
+    @pytest.mark.respx(base_url="http://paperless.test:8000")
+    async def test_get_storage_path(
+        self,
+        client: PaperlessClient,
+        respx_mock: respx.MockRouter,
+    ) -> None:
+        """Test getting a single storage path by ID."""
+        respx_mock.get("/api/storage_paths/3/").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 3,
+                    "slug": "archive",
+                    "name": "Archive",
+                    "path": "archive/{created_year}/",
+                    "match": "",
+                    "matching_algorithm": 0,
+                    "is_insensitive": True,
+                    "document_count": 100,
+                    "owner": 1,
+                    "user_can_change": True,
+                },
+            ),
+        )
+
+        result = await client.get_storage_path(3)
+
+        assert isinstance(result, StoragePath)
+        assert result.id == 3
+        assert result.name == "Archive"
+        assert result.path == "archive/{created_year}/"
+
+    @pytest.mark.respx(base_url="http://paperless.test:8000")
+    async def test_not_found(
+        self,
+        client: PaperlessClient,
+        respx_mock: respx.MockRouter,
+    ) -> None:
+        """Missing storage path raises PaperlessNotFoundError."""
+        respx_mock.get("/api/storage_paths/999/").mock(
+            return_value=httpx.Response(404),
+        )
+
+        with pytest.raises(PaperlessNotFoundError):
+            await client.get_storage_path(999)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -16,6 +17,7 @@ from paperless_ngx_smart_ocr.paperless.exceptions import (
 from paperless_ngx_smart_ocr.paperless.models import (
     Correspondent,
     Document,
+    DocumentMetadata,
     DocumentType,
     PaginatedResponse,
     Tag,
@@ -28,7 +30,7 @@ from paperless_ngx_smart_ocr.workers.exceptions import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    from collections.abc import AsyncIterator, Generator
 
     from fastapi import FastAPI
 
@@ -71,14 +73,57 @@ def _make_mock_client() -> MagicMock:
     client.close = AsyncMock()
     client.list_documents = AsyncMock()
     client.get_document = AsyncMock()
+    client.get_document_metadata = AsyncMock(
+        return_value=DocumentMetadata(
+            original_checksum="abc123",
+            original_size=12345,
+            original_mime_type="application/pdf",
+            has_archive_version=False,
+            original_metadata=[],
+            archive_metadata=[],
+        ),
+    )
+    client.get_tag = AsyncMock(
+        side_effect=lambda tag_id: Tag(
+            id=tag_id,
+            slug=f"tag-{tag_id}",
+            name=f"Tag {tag_id}",
+        ),
+    )
+    client.get_correspondent = AsyncMock(
+        return_value=Correspondent(
+            id=1,
+            slug="acme",
+            name="ACME Corp",
+        ),
+    )
+    client.get_document_type = AsyncMock(
+        return_value=DocumentType(
+            id=1,
+            slug="invoice",
+            name="Invoice",
+        ),
+    )
+    client.get_storage_path = AsyncMock(
+        return_value=MagicMock(
+            id=1,
+            name="Archive",
+        ),
+    )
     client.list_tags = AsyncMock(
         return_value=PaginatedResponse[Tag](count=0, results=[]),
     )
     client.list_correspondents = AsyncMock(
-        return_value=PaginatedResponse[Correspondent](count=0, results=[]),
+        return_value=PaginatedResponse[Correspondent](
+            count=0,
+            results=[],
+        ),
     )
     client.list_document_types = AsyncMock(
-        return_value=PaginatedResponse[DocumentType](count=0, results=[]),
+        return_value=PaginatedResponse[DocumentType](
+            count=0,
+            results=[],
+        ),
     )
     return client
 
@@ -97,6 +142,9 @@ def _make_document(
         "created_date": "2024-01-15",
         "modified": _NOW,
         "added": _NOW,
+        "correspondent": 1,
+        "document_type": 1,
+        "archive_serial_number": 42,
     }
     defaults.update(overrides)
     return Document(**defaults)  # type: ignore[arg-type]
@@ -134,6 +182,26 @@ def _make_mock_job(
         "metadata": {},
     }
     return job
+
+
+def _mock_pdf_download(
+    content: bytes,
+) -> object:
+    """Create a mock async context manager for PDF download."""
+
+    @asynccontextmanager
+    async def _download(*_args: object, **_kw: object) -> AsyncIterator[MagicMock]:
+        mock_resp = MagicMock()
+
+        async def aiter_bytes(
+            chunk_size: int = 65536,
+        ) -> AsyncIterator[bytes]:
+            yield content
+
+        mock_resp.aiter_bytes = aiter_bytes
+        yield mock_resp
+
+    return _download
 
 
 def _make_mock_pipeline_result(
@@ -377,6 +445,126 @@ class TestDocumentDetailView:
         response = client.get("/documents/1")
         assert "Stage 1 (OCR)" in response.text
         assert "Stage 2 (Markdown)" in response.text
+
+    def test_shows_tag_names(self, test_app: FastAPI, client: TestClient) -> None:
+        """Tags are displayed as names, not numeric IDs."""
+        doc = _make_document(document_id=1, tags=[1, 2])
+        test_app.state.client.get_document = AsyncMock(
+            return_value=doc,
+        )
+        response = client.get("/documents/1")
+        assert "Tag 1" in response.text
+        assert "Tag 2" in response.text
+
+    def test_shows_correspondent_name(
+        self, test_app: FastAPI, client: TestClient
+    ) -> None:
+        """Correspondent name is resolved and displayed."""
+        doc = _make_document(document_id=1, correspondent=1)
+        test_app.state.client.get_document = AsyncMock(
+            return_value=doc,
+        )
+        response = client.get("/documents/1")
+        assert "ACME Corp" in response.text
+
+    def test_shows_document_type_name(
+        self, test_app: FastAPI, client: TestClient
+    ) -> None:
+        """Document type name is resolved and displayed."""
+        doc = _make_document(document_id=1, document_type=1)
+        test_app.state.client.get_document = AsyncMock(
+            return_value=doc,
+        )
+        response = client.get("/documents/1")
+        assert "Invoice" in response.text
+
+    def test_shows_archive_serial_number(
+        self, test_app: FastAPI, client: TestClient
+    ) -> None:
+        """Archive serial number is displayed."""
+        doc = _make_document(
+            document_id=1,
+            archive_serial_number=42,
+        )
+        test_app.state.client.get_document = AsyncMock(
+            return_value=doc,
+        )
+        response = client.get("/documents/1")
+        assert "42" in response.text
+        assert ">ASN<" in response.text
+
+    def test_shows_pdf_viewer(self, test_app: FastAPI, client: TestClient) -> None:
+        """Detail page contains PDF viewer iframe."""
+        doc = _make_document(document_id=7)
+        test_app.state.client.get_document = AsyncMock(
+            return_value=doc,
+        )
+        response = client.get("/documents/7")
+        assert "/documents/7/pdf" in response.text
+        assert "PDF Preview" in response.text
+
+    def test_shows_metadata_section(
+        self, test_app: FastAPI, client: TestClient
+    ) -> None:
+        """Detail page contains collapsible metadata."""
+        doc = _make_document(document_id=1)
+        test_app.state.client.get_document = AsyncMock(
+            return_value=doc,
+        )
+        test_app.state.client.get_document_metadata = AsyncMock(
+            return_value=DocumentMetadata(
+                original_metadata=[
+                    {
+                        "namespace": "dc",
+                        "prefix": "dc",
+                        "key": "title",
+                        "value": "Test",
+                    },
+                ],
+            ),
+        )
+        response = client.get("/documents/1")
+        assert "Original Metadata" in response.text
+
+    def test_no_correspondent_shows_na(
+        self, test_app: FastAPI, client: TestClient
+    ) -> None:
+        """Shows N/A when correspondent is None."""
+        doc = _make_document(
+            document_id=1,
+            correspondent=None,
+        )
+        test_app.state.client.get_document = AsyncMock(
+            return_value=doc,
+        )
+        response = client.get("/documents/1")
+        assert "Correspondent" in response.text
+
+
+# ---------------------------------------------------------------------------
+# TestDocumentPdfProxy
+# ---------------------------------------------------------------------------
+
+
+class TestDocumentPdfProxy:
+    """Tests for GET /documents/{document_id}/pdf."""
+
+    def test_returns_pdf_content_type(
+        self, test_app: FastAPI, client: TestClient
+    ) -> None:
+        """Returns response with PDF content type."""
+        test_app.state.client.download_document = _mock_pdf_download(b"%PDF-1.4 test")
+        response = client.get("/documents/1/pdf")
+        assert response.status_code == 200
+        assert "application/pdf" in response.headers["content-type"]
+
+    def test_streams_pdf_bytes(self, test_app: FastAPI, client: TestClient) -> None:
+        """Response body contains the streamed PDF bytes."""
+        test_app.state.client.download_document = _mock_pdf_download(
+            b"%PDF-1.4 test content"
+        )
+        response = client.get("/documents/1/pdf")
+        assert response.content == b"%PDF-1.4 test content"
 
 
 # ---------------------------------------------------------------------------

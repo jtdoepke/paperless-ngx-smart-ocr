@@ -28,6 +28,7 @@ from paperless_ngx_smart_ocr.paperless.models import (
     DocumentType,
     DocumentUpdate,
     PaginatedResponse,
+    StoragePath,
     Tag,
     TagCreate,
     TaskState,
@@ -748,6 +749,24 @@ class PaperlessClient:
             results=[Correspondent.model_validate(c) for c in data["results"]],
         )
 
+    async def get_correspondent(
+        self,
+        correspondent_id: int,
+    ) -> Correspondent:
+        """Get a single correspondent by ID.
+
+        Args:
+            correspondent_id: The correspondent ID.
+
+        Returns:
+            The correspondent.
+        """
+        response = await self._request(
+            "GET",
+            f"/correspondents/{correspondent_id}/",
+        )
+        return Correspondent.model_validate(response.json())
+
     # -------------------------------------------------------------------------
     # Document Type Operations
     # -------------------------------------------------------------------------
@@ -779,6 +798,46 @@ class PaperlessClient:
             previous=data.get("previous"),
             results=[DocumentType.model_validate(d) for d in data["results"]],
         )
+
+    async def get_document_type(
+        self,
+        document_type_id: int,
+    ) -> DocumentType:
+        """Get a single document type by ID.
+
+        Args:
+            document_type_id: The document type ID.
+
+        Returns:
+            The document type.
+        """
+        response = await self._request(
+            "GET",
+            f"/document_types/{document_type_id}/",
+        )
+        return DocumentType.model_validate(response.json())
+
+    # -------------------------------------------------------------------------
+    # Storage Path Operations
+    # -------------------------------------------------------------------------
+
+    async def get_storage_path(
+        self,
+        storage_path_id: int,
+    ) -> StoragePath:
+        """Get a single storage path by ID.
+
+        Args:
+            storage_path_id: The storage path ID.
+
+        Returns:
+            The storage path.
+        """
+        response = await self._request(
+            "GET",
+            f"/storage_paths/{storage_path_id}/",
+        )
+        return StoragePath.model_validate(response.json())
 
     # -------------------------------------------------------------------------
     # Task Status

@@ -314,6 +314,16 @@ def _configure_templates(app: FastAPI) -> None:
     settings: Settings = app.state.settings
     templates.env.globals["version"] = __version__
     templates.env.globals["theme_mode"] = settings.web.theme.value
+
+    def _format_datetime(value: object, fmt: str = "%Y-%m-%d %H:%M") -> str:
+        """Format a datetime for display in templates."""
+        from datetime import datetime
+
+        if isinstance(value, datetime):
+            return value.strftime(fmt)
+        return str(value)
+
+    templates.env.filters["datefmt"] = _format_datetime
     app.state.templates = templates
 
 
