@@ -1,0 +1,10 @@
+<div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+  <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">
+    Bulk Processing: {{ count }} document{{ "s" if count != 1 }} submitted
+  </h3>
+  <div class="space-y-3">
+    {% for job in jobs %}
+    {% include "partials/job_card.html" %}
+    {% endfor %}
+  </div>
+</div>

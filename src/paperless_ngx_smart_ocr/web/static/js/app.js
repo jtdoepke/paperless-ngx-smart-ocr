@@ -79,3 +79,217 @@
       }
     });
 })();
+
+/**
+ * Bulk document selection and processing.
+ *
+ * Manages checkbox state across htmx table swaps and provides
+ * a fixed action bar for bulk processing selected documents.
+ */
+(function () {
+  "use strict";
+
+  // -- Selection state (persists across htmx swaps) --
+  var selectedIds = new Set();
+  var selectAllMatchingMode = false;
+  var allMatchingCount = 0;
+  var allMatchingFilterQs = "";
+
+  // -- UI helpers --
+
+  function updateUI() {
+    var bar = document.getElementById("bulk-action-bar");
+    var text = document.getElementById("bulk-selection-text");
+    if (!bar || !text) return;
+
+    var count = selectAllMatchingMode ? allMatchingCount : selectedIds.size;
+
+    if (count > 0) {
+      bar.classList.remove("hidden");
+      var suffix = selectAllMatchingMode ? " (all matching)" : "";
+      text.textContent =
+        count + " document" + (count !== 1 ? "s" : "") + " selected" + suffix;
+    } else {
+      bar.classList.add("hidden");
+    }
+    syncHeaderCheckbox();
+  }
+
+  function syncHeaderCheckbox() {
+    var headerCb = document.getElementById("select-page");
+    if (!headerCb) return;
+    var rowCbs = document.querySelectorAll(".doc-select");
+    var allChecked =
+      rowCbs.length > 0 &&
+      Array.from(rowCbs).every(function (cb) {
+        return cb.checked;
+      });
+    var someChecked = Array.from(rowCbs).some(function (cb) {
+      return cb.checked;
+    });
+    headerCb.checked = allChecked;
+    headerCb.indeterminate = someChecked && !allChecked;
+  }
+
+  function recheckBoxes() {
+    var rowCbs = document.querySelectorAll(".doc-select");
+    rowCbs.forEach(function (cb) {
+      var id = parseInt(cb.dataset.documentId, 10);
+      cb.checked = selectAllMatchingMode || selectedIds.has(id);
+    });
+    syncHeaderCheckbox();
+  }
+
+  function clearSelection() {
+    selectedIds.clear();
+    selectAllMatchingMode = false;
+    allMatchingCount = 0;
+    allMatchingFilterQs = "";
+    document.querySelectorAll(".doc-select").forEach(function (cb) {
+      cb.checked = false;
+    });
+    updateUI();
+  }
+
+  function readTableData() {
+    var table = document.querySelector("#document-table table");
+    if (!table) return {};
+    return {
+      totalCount: parseInt(table.dataset.totalCount, 10) || 0,
+      filterQs: table.dataset.filterQs || "",
+    };
+  }
+
+  // -- Event handlers (all use delegation) --
+
+  // Row checkboxes: delegate on #document-table
+  document.addEventListener("change", function (e) {
+    if (!e.target.classList.contains("doc-select")) return;
+    var id = parseInt(e.target.dataset.documentId, 10);
+    if (e.target.checked) {
+      selectedIds.add(id);
+    } else {
+      selectedIds.delete(id);
+      selectAllMatchingMode = false;
+    }
+    updateUI();
+  });
+
+  // Header "select page" checkbox
+  document.addEventListener("change", function (e) {
+    if (e.target.id !== "select-page") return;
+    document.querySelectorAll(".doc-select").forEach(function (cb) {
+      cb.checked = e.target.checked;
+      var id = parseInt(cb.dataset.documentId, 10);
+      if (e.target.checked) {
+        selectedIds.add(id);
+      } else {
+        selectedIds.delete(id);
+      }
+    });
+    if (!e.target.checked) {
+      selectAllMatchingMode = false;
+    }
+    updateUI();
+  });
+
+  // All click-based actions via single delegated listener
+  document.addEventListener("click", function (e) {
+    var target = e.target.closest("[id]");
+    if (!target) return;
+
+    // Dropdown toggle
+    if (target.id === "select-dropdown-toggle") {
+      var dd = document.getElementById("select-dropdown");
+      if (dd) dd.classList.toggle("hidden");
+      return;
+    }
+
+    // Dropdown: select this page
+    if (target.id === "select-all-page") {
+      document.querySelectorAll(".doc-select").forEach(function (cb) {
+        cb.checked = true;
+        selectedIds.add(parseInt(cb.dataset.documentId, 10));
+      });
+      selectAllMatchingMode = false;
+      updateUI();
+      document.getElementById("select-dropdown").classList.add("hidden");
+      return;
+    }
+
+    // Dropdown: select all matching
+    if (target.id === "select-all-matching") {
+      var data = readTableData();
+      allMatchingCount = data.totalCount;
+      allMatchingFilterQs = data.filterQs;
+      selectAllMatchingMode = true;
+      document.querySelectorAll(".doc-select").forEach(function (cb) {
+        cb.checked = true;
+      });
+      updateUI();
+      document.getElementById("select-dropdown").classList.add("hidden");
+      return;
+    }
+
+    // Dropdown: clear selection
+    if (target.id === "deselect-all") {
+      clearSelection();
+      document.getElementById("select-dropdown").classList.add("hidden");
+      return;
+    }
+
+    // Bulk action bar: clear
+    if (target.id === "bulk-clear-btn") {
+      clearSelection();
+      return;
+    }
+
+    // Bulk action bar: process
+    if (target.id === "bulk-process-btn") {
+      var force = document.getElementById("bulk-force");
+      var values = { force: force && force.checked ? "true" : "" };
+
+      if (selectAllMatchingMode) {
+        values.filter_query = allMatchingFilterQs;
+      } else {
+        values.document_ids = Array.from(selectedIds).join(",");
+      }
+
+      htmx.ajax("POST", "/documents/bulk-process", {
+        target: "#bulk-result-area",
+        swap: "innerHTML",
+        values: values,
+      });
+      clearSelection();
+      return;
+    }
+  });
+
+  // Close dropdown on outside click
+  document.addEventListener("click", function (e) {
+    var dd = document.getElementById("select-dropdown");
+    if (!dd || dd.classList.contains("hidden")) return;
+    var toggle = document.getElementById("select-dropdown-toggle");
+    if (
+      !dd.contains(e.target) &&
+      (!toggle || !toggle.contains(e.target))
+    ) {
+      dd.classList.add("hidden");
+    }
+  });
+
+  // Re-check boxes after htmx swaps the document table
+  document.addEventListener("htmx:afterSwap", function (e) {
+    if (e.detail.target && e.detail.target.id === "document-table") {
+      recheckBoxes();
+      updateUI();
+    }
+  });
+
+  // Clear selection when filter form is submitted (new filter = new universe)
+  document.addEventListener("htmx:configRequest", function (e) {
+    if (e.detail.elt && e.detail.elt.closest("#filter-form")) {
+      clearSelection();
+    }
+  });
+})();

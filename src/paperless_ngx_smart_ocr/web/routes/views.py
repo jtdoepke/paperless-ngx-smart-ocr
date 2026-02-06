@@ -504,6 +504,133 @@ async def dry_run_view(
     )
 
 
+@router.post(
+    "/documents/bulk-process",
+    response_class=HTMLResponse,
+)
+async def bulk_process_view(
+    request: Request,
+    document_ids: str = Form(default=""),
+    filter_query: str = Form(default=""),
+    force: bool = Form(default=False),  # noqa: FBT001
+) -> Response:
+    """Submit multiple documents for background processing (UI).
+
+    Accepts either an explicit comma-separated list of document IDs
+    or a filter query string to re-query all matching documents.
+
+    Args:
+        request: The incoming HTTP request.
+        document_ids: Comma-separated document IDs.
+        filter_query: URL filter query string for "all matching" mode.
+        force: Force processing regardless of born-digital status.
+
+    Returns:
+        Bulk jobs partial with one job card per document.
+    """
+    from paperless_ngx_smart_ocr.pipeline.orchestrator import (
+        process_document,
+    )
+
+    settings: Settings = request.app.state.settings
+    client: PaperlessClient = request.app.state.client
+    job_queue: JobQueue = request.app.state.job_queue
+
+    doc_ids = [int(x.strip()) for x in document_ids.split(",") if x.strip()]
+
+    if not doc_ids and filter_query:
+        doc_ids = await _collect_filtered_ids(
+            client,
+            filter_query,
+        )
+
+    jobs = []
+    for doc_id in doc_ids:
+        coro = process_document(
+            doc_id,
+            settings=settings,
+            client=client,
+            force=force,
+        )
+        job = await job_queue.submit(
+            coro,
+            name=f"Process document {doc_id}",
+            document_id=doc_id,
+        )
+        jobs.append(job.to_dict())
+
+    templates = _get_templates(request)
+    return templates.TemplateResponse(
+        "partials/bulk_jobs.html",
+        _ctx(request, jobs=jobs, count=len(jobs)),
+    )
+
+
+async def _collect_filtered_ids(
+    client: PaperlessClient,
+    filter_query: str,
+    *,
+    max_docs: int = 500,
+) -> list[int]:
+    """Re-query paperless-ngx with filters to collect document IDs.
+
+    Args:
+        client: The paperless-ngx API client.
+        filter_query: URL-encoded filter query string
+            (e.g. ``&query=invoice&ordering=-created``).
+        max_docs: Maximum number of document IDs to collect.
+
+    Returns:
+        List of matching document IDs (capped at *max_docs*).
+    """
+    from urllib.parse import parse_qs
+
+    params = parse_qs(filter_query.lstrip("&?"))
+
+    def _first(key: str) -> str | None:
+        vals = params.get(key, [])
+        return vals[0] if vals else None
+
+    query = _first("query")
+    ordering = _first("ordering")
+    tags_include = _parse_int_list(_first("tags_include"))
+    tags_exclude = _parse_int_list(_first("tags_exclude"))
+    correspondent_str = _first("correspondent")
+    correspondent = int(correspondent_str) if correspondent_str else None
+    doc_type_str = _first("document_type")
+    document_type = int(doc_type_str) if doc_type_str else None
+    created_from = _first("created_from")
+    created_to = _first("created_to")
+    added_from = _first("added_from")
+    added_to = _first("added_to")
+
+    all_ids: list[int] = []
+    pg = 1
+    batch = 100
+    while len(all_ids) < max_docs:
+        result = await client.list_documents(
+            page=pg,
+            page_size=batch,
+            query=query,
+            ordering=ordering,
+            tags_include=tags_include,
+            tags_exclude=tags_exclude,
+            correspondent=correspondent,
+            document_type=document_type,
+            created_from=created_from,
+            created_to=created_to,
+            added_from=added_from,
+            added_to=added_to,
+            truncate_content=True,
+        )
+        all_ids.extend(d.id for d in result.results)
+        if pg * batch >= result.count:
+            break
+        pg += 1
+
+    return all_ids[:max_docs]
+
+
 # -------------------------------------------------------------------
 # Jobs
 # -------------------------------------------------------------------

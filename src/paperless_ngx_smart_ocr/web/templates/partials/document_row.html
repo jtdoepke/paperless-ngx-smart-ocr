@@ -1,4 +1,10 @@
 <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+  <td class="py-3 px-4">
+    <input type="checkbox"
+           class="doc-select rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
+           data-document-id="{{ doc.id }}"
+           value="{{ doc.id }}">
+  </td>
   <td class="py-3 px-4 text-sm text-gray-500 dark:text-gray-400">{{ doc.id }}</td>
   <td class="py-3 px-4">
     <a href="/documents/{{ doc.id }}"

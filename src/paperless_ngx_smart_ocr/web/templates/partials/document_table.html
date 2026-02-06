@@ -6,9 +6,40 @@
   {% endfor %}
 {% endif %}
 
-<table class="min-w-full">
+<table class="min-w-full" data-total-count="{{ documents.count }}" data-filter-qs="{{ filter_qs }}">
   <thead>
     <tr class="border-b border-gray-300 dark:border-gray-600">
+      <th class="py-3 px-4 w-10 relative">
+        <div class="flex items-center space-x-1">
+          <input type="checkbox"
+                 id="select-page"
+                 class="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
+                 title="Select all on this page">
+          <button type="button"
+                  id="select-dropdown-toggle"
+                  class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                  title="More selection options">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+        </div>
+        <div id="select-dropdown"
+             class="hidden absolute left-0 mt-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md shadow-lg z-10 py-1 text-xs whitespace-nowrap">
+          <button type="button" id="select-all-page"
+                  class="block w-full text-left px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200">
+            Select this page
+          </button>
+          <button type="button" id="select-all-matching"
+                  class="block w-full text-left px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200">
+            Select all {{ documents.count }} matching
+          </button>
+          <button type="button" id="deselect-all"
+                  class="block w-full text-left px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200">
+            Clear selection
+          </button>
+        </div>
+      </th>
       <th class="py-3 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">ID</th>
       <th class="py-3 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Title</th>
       <th class="py-3 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Filename</th>
@@ -22,7 +53,7 @@
     {% endfor %}
     {% if not documents.results %}
     <tr>
-      <td colspan="5" class="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+      <td colspan="6" class="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
         No documents found.
       </td>
     </tr>

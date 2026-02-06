@@ -137,6 +137,34 @@
        class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-x-auto">
     {% include "partials/document_table.html" %}
   </div>
+
+  <!-- Bulk processing result area -->
+  <div id="bulk-result-area" class="space-y-3"></div>
+</div>
+
+<!-- Bulk action bar (fixed bottom, hidden until documents are selected) -->
+<div id="bulk-action-bar"
+     class="hidden fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 shadow-lg">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
+    <span id="bulk-selection-text" class="text-sm text-gray-700 dark:text-gray-300">
+      0 documents selected
+    </span>
+    <div class="flex items-center space-x-3">
+      <label class="flex items-center space-x-2 text-sm">
+        <input type="checkbox" id="bulk-force" value="true"
+               class="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500">
+        <span class="text-gray-700 dark:text-gray-300">Force</span>
+      </label>
+      <button type="button" id="bulk-clear-btn"
+              class="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">
+        Clear
+      </button>
+      <button type="button" id="bulk-process-btn"
+              class="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+        Bulk Process
+      </button>
+    </div>
+  </div>
 </div>
 
 {% block scripts %}

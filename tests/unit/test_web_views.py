@@ -383,6 +383,32 @@ class TestDocumentListView:
         assert call_kwargs["page"] == 3
         assert call_kwargs["page_size"] == 10
 
+    def test_has_row_checkboxes(self, test_app: FastAPI, client: TestClient) -> None:
+        """Document rows include selection checkboxes."""
+        test_app.state.client.list_documents = AsyncMock(
+            return_value=_make_paginated_response(),
+        )
+        response = client.get("/documents")
+        assert 'class="doc-select' in response.text
+        assert 'data-document-id="1"' in response.text
+
+    def test_has_header_checkbox(self, test_app: FastAPI, client: TestClient) -> None:
+        """Document table includes header select-all checkbox."""
+        test_app.state.client.list_documents = AsyncMock(
+            return_value=_make_paginated_response(),
+        )
+        response = client.get("/documents")
+        assert 'id="select-page"' in response.text
+
+    def test_has_bulk_action_bar(self, test_app: FastAPI, client: TestClient) -> None:
+        """Document list page includes the bulk action bar."""
+        test_app.state.client.list_documents = AsyncMock(
+            return_value=_make_paginated_response(),
+        )
+        response = client.get("/documents")
+        assert 'id="bulk-action-bar"' in response.text
+        assert 'id="bulk-process-btn"' in response.text
+
 
 # ---------------------------------------------------------------------------
 # TestDocumentDetailView
@@ -693,6 +719,115 @@ class TestDryRunView:
             client.post("/documents/1/dry-run")
 
         test_app.state.job_queue.submit.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# TestBulkProcessView
+# ---------------------------------------------------------------------------
+
+
+class TestBulkProcessView:
+    """Tests for POST /documents/bulk-process."""
+
+    def test_returns_html(self, test_app: FastAPI, client: TestClient) -> None:
+        """Returns HTML with job cards."""
+        mock_job = _make_mock_job()
+        test_app.state.job_queue.submit = AsyncMock(
+            return_value=mock_job,
+        )
+        with patch(
+            "paperless_ngx_smart_ocr.pipeline.orchestrator.process_document",
+        ):
+            response = client.post(
+                "/documents/bulk-process",
+                data={"document_ids": "1,2,3"},
+            )
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+
+    def test_submits_multiple_jobs(self, test_app: FastAPI, client: TestClient) -> None:
+        """Each document ID gets its own job."""
+        mock_job = _make_mock_job()
+        test_app.state.job_queue.submit = AsyncMock(
+            return_value=mock_job,
+        )
+        with patch(
+            "paperless_ngx_smart_ocr.pipeline.orchestrator.process_document",
+        ):
+            client.post(
+                "/documents/bulk-process",
+                data={"document_ids": "1,2,3"},
+            )
+        assert test_app.state.job_queue.submit.call_count == 3
+
+    def test_shows_count(self, test_app: FastAPI, client: TestClient) -> None:
+        """Response shows the number of submitted jobs."""
+        mock_job = _make_mock_job()
+        test_app.state.job_queue.submit = AsyncMock(
+            return_value=mock_job,
+        )
+        with patch(
+            "paperless_ngx_smart_ocr.pipeline.orchestrator.process_document",
+        ):
+            response = client.post(
+                "/documents/bulk-process",
+                data={"document_ids": "1,2"},
+            )
+        assert "2 documents submitted" in response.text
+
+    def test_empty_ids_returns_zero(
+        self, test_app: FastAPI, client: TestClient
+    ) -> None:
+        """Empty document_ids returns 0 jobs."""
+        response = client.post(
+            "/documents/bulk-process",
+            data={"document_ids": ""},
+        )
+        assert response.status_code == 200
+        assert "0 documents submitted" in response.text
+
+    def test_filter_query_mode(self, test_app: FastAPI, client: TestClient) -> None:
+        """filter_query triggers server-side re-query."""
+        test_app.state.client.list_documents = AsyncMock(
+            return_value=_make_paginated_response(
+                [_make_document(1), _make_document(2)],
+            ),
+        )
+        mock_job = _make_mock_job()
+        test_app.state.job_queue.submit = AsyncMock(
+            return_value=mock_job,
+        )
+        with patch(
+            "paperless_ngx_smart_ocr.pipeline.orchestrator.process_document",
+        ):
+            response = client.post(
+                "/documents/bulk-process",
+                data={
+                    "filter_query": "&query=invoice",
+                },
+            )
+        assert response.status_code == 200
+        assert test_app.state.job_queue.submit.call_count == 2
+
+    def test_force_flag_forwarded(self, test_app: FastAPI, client: TestClient) -> None:
+        """force=true is forwarded to process_document."""
+        mock_job = _make_mock_job()
+        test_app.state.job_queue.submit = AsyncMock(
+            return_value=mock_job,
+        )
+        with patch(
+            "paperless_ngx_smart_ocr.pipeline.orchestrator.process_document",
+        ) as mock_process:
+            client.post(
+                "/documents/bulk-process",
+                data={
+                    "document_ids": "1",
+                    "force": "true",
+                },
+            )
+        mock_process.assert_called_once()
+        call_kwargs = mock_process.call_args.kwargs
+        assert call_kwargs["force"] is True
 
 
 # ---------------------------------------------------------------------------
