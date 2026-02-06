@@ -629,18 +629,18 @@ Completed: Project initialized with uv, pyproject.toml configured with all depen
 
 ### Phase 6: Web UI
 
-- [ ] **FastAPI application** (`src/paperless_ngx_smart_ocr/web/app.py`)
-  - [ ] Application factory pattern
-  - [ ] Middleware setup (CORS, request ID)
-  - [ ] Exception handlers
-  - [ ] Static file serving
-  - [ ] Lifespan management (startup/shutdown)
+- [x] **FastAPI application** (`src/paperless_ngx_smart_ocr/web/app.py`)
+  - [x] Application factory pattern
+  - [x] Middleware setup (CORS, request ID)
+  - [x] Exception handlers
+  - [x] Static file serving
+  - [x] Lifespan management (startup/shutdown)
 - [ ] **API routes** (`src/paperless_ngx_smart_ocr/web/routes/`)
   - [ ] Document listing with filtering (`documents.py`)
   - [ ] Document processing trigger
   - [ ] Dry run endpoint
   - [ ] Job status endpoints (`jobs.py`)
-  - [ ] Health check endpoints (`health.py`)
+  - [x] Health check endpoints (`health.py`)
 - [ ] **htmx templates** (`src/paperless_ngx_smart_ocr/web/templates/`)
   - [ ] Base layout with Tailwind CSS
   - [ ] Dark mode support with system preference detection

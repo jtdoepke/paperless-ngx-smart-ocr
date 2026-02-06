@@ -67,10 +67,23 @@ def main(
 def serve(
     host: str = typer.Option("0.0.0.0", "--host", "-h", help="Host to bind to."),  # noqa: S104
     port: int = typer.Option(8080, "--port", "-p", help="Port to bind to."),
+    config_file: str | None = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Path to configuration file.",
+    ),
 ) -> None:
     """Start the web server with background workers."""
-    typer.echo(f"Starting server on {host}:{port}...")
-    typer.echo("Not yet implemented.")
+    import uvicorn
+
+    from paperless_ngx_smart_ocr.config import load_settings
+    from paperless_ngx_smart_ocr.web import create_app
+
+    settings = load_settings(config_file)
+    application = create_app(settings=settings)
+
+    uvicorn.run(application, host=host, port=port)
 
 
 @app.command()

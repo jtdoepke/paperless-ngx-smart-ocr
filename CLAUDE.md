@@ -48,7 +48,7 @@ Document → Pre-Processing Analysis → Stage 1 (OCR) → Stage 2 (Markdown) �
                                    Surya Layout      PATCH content
 ```
 
-Each stage can be independently enabled/disabled via configuration.
+Each stage can be independently enabled/disabled via configuration. The `PipelineOrchestrator` coordinates the full workflow: download, Stage 1, Stage 2, content PATCH, tag update, and temp file cleanup.
 
 ### Integration Patterns
 
@@ -63,8 +63,24 @@ Three ways to trigger processing:
 - **`paperless/`** - Async API client for paperless-ngx (PaperlessClient, Document/Tag models)
 - **`observability/`** - Structured logging with structlog, request ID tracking
 - **`workers/`** - Background job queue (JobQueue wrapping aiojobs), job status tracking
-- **`pipeline/`** - Two-stage processing pipeline (Stage1Processor for OCR, Stage2Processor for Markdown)
+- **`pipeline/`** - Two-stage processing pipeline with orchestrator
+  - `stage1_ocr.py` - Stage1Processor for OCR via OCRmyPDF + Surya layout
+  - `stage2_markdown.py` - Stage2Processor for Markdown via Marker
+  - `orchestrator.py` - PipelineOrchestrator coordinating both stages end-to-end
+  - `models.py` - Result dataclasses (Stage1Result, Stage2Result, PipelineResult)
+- **`web/`** - FastAPI application with htmx UI
+  - `app.py` - Application factory (`create_app`), lifespan, middleware, exception handlers
+  - `routes/health.py` - Health (`/api/health`) and readiness (`/api/ready`) endpoints
+  - Dependency helpers: `get_app_settings`, `get_job_queue`, `get_paperless_client`
 - **`cli/`** - Typer CLI (entry point: `smart-ocr`)
+
+### Key Architectural Patterns
+
+- **Processors never raise**: `Stage1Processor`, `Stage2Processor`, and `PipelineOrchestrator.process()` always return result dataclasses (never raise exceptions). Errors are captured in the result's `error` field.
+- **Stage chaining**: If Stage 1 produces OCR output, Stage 2 uses it; if Stage 1 skips/fails, Stage 2 falls back to original PDF.
+- **Tag-based workflow**: Documents tracked via tags (smart-ocr:pending, :completed, :failed, :skip). The orchestrator manages tag transitions.
+- **Content modes**: Stage 2 supports REPLACE (overwrite) or APPEND (preserve existing content) modes when patching the paperless-ngx content field.
+- **Known limitation**: The paperless-ngx API has no endpoint for replacing a document's file in-place, so OCR'd PDFs are only used within the pipeline run (not re-uploaded).
 
 ### Module Usage Examples
 
@@ -85,6 +101,8 @@ settings.web.port                # 8080
 # Use cached singleton
 settings = get_settings()
 ```
+
+Environment variables use `SMARTOCR_` prefix with `__` delimiter (e.g., `SMARTOCR_WEB__PORT=9000`).
 
 #### Paperless-ngx Client
 
@@ -109,9 +127,52 @@ set_request_id()  # For request correlation
 logger.info("processing_document", document_id=123, stage="ocr")
 ```
 
-Output (logfmt, auto-detects TTY for colors):
+#### Pipeline Orchestrator
+
+```python
+from paperless_ngx_smart_ocr.pipeline import PipelineOrchestrator, process_document
+
+# Full pipeline: download → Stage 1 → Stage 2 → content PATCH → tag update
+async with PaperlessClient(base_url, token) as client:
+    result = await process_document(
+        document_id,
+        settings=settings,
+        client=client,
+    )
+    # result.success, result.stage1_result, result.stage2_result,
+    # result.tags_updated, result.content_updated, result.error
 ```
-timestamp=2024-01-15T10:30:45Z level=info event=processing_document document_id=123 request_id=abc12345
+
+#### Pipeline (Stage 1 OCR)
+
+```python
+from paperless_ngx_smart_ocr.pipeline import analyze_document, process_stage1
+
+# Analyze document for born-digital detection
+analysis = analyze_document(pdf_path)
+
+# Process through Stage 1 OCR
+result = await process_stage1(
+    input_path, output_path,
+    config=settings.pipeline.stage1,
+    gpu_mode=settings.gpu.enabled,
+)
+```
+
+#### Pipeline (Stage 2 Markdown)
+
+```python
+from paperless_ngx_smart_ocr.pipeline import process_stage2, get_marker_models
+
+# Pre-load Marker models (cached singleton, expensive first call)
+await get_marker_models()
+
+# Process through Stage 2 Markdown conversion
+result = await process_stage2(
+    pdf_path,
+    config=settings.pipeline.stage2,
+    gpu_mode=settings.gpu.enabled,
+)
 ```
 
 #### Job Queue
@@ -120,93 +181,54 @@ timestamp=2024-01-15T10:30:45Z level=info event=processing_document document_id=
 from paperless_ngx_smart_ocr.workers import JobQueue, JobStatus
 
 async with JobQueue(workers=4, timeout=600) as queue:
-    # Submit a background job
     job = await queue.submit(
         process_document(doc_id),
         name="Process document 123",
         document_id=doc_id,
     )
-
-    # Wait for completion
     completed = await queue.wait(job.id)
-    if completed.status == JobStatus.COMPLETED:
-        print(f"Result: {completed.result.value}")
-
-    # Or cancel a running job
-    await queue.cancel(job.id)
-
-    # List jobs by status
-    active_jobs = await queue.list_active()
-    pending_jobs = await queue.list_pending()
 ```
 
-#### Pipeline (Stage 1 OCR)
+#### Web Application
 
 ```python
-from paperless_ngx_smart_ocr.config import get_settings
-from paperless_ngx_smart_ocr.pipeline import (
-    Stage1Processor,
-    analyze_document,
-    process_stage1,
-)
+from paperless_ngx_smart_ocr.web import create_app
+from paperless_ngx_smart_ocr.config import load_settings
 
-# Analyze document for born-digital detection
-analysis = analyze_document(pdf_path)
-if analysis.is_born_digital:
-    print("Document already has text layer")
+# Create app with custom settings
+settings = load_settings("/path/to/config.yaml")
+app = create_app(settings=settings)
 
-# Process through Stage 1 OCR
-settings = get_settings()
-result = await process_stage1(
-    input_path,
-    output_path,
-    config=settings.pipeline.stage1,
-    gpu_mode=settings.gpu.enabled,
-)
+# Or use defaults (loads from standard config locations)
+app = create_app()
 
-if result.success:
-    print(f"OCR completed: {result.pages_processed} pages")
-elif result.skipped:
-    print(f"Skipped: {result.skip_reason}")
-```
-
-#### Pipeline (Stage 2 Markdown)
-
-```python
-from paperless_ngx_smart_ocr.config import get_settings
-from paperless_ngx_smart_ocr.pipeline import (
-    Stage2Processor,
-    process_stage2,
-    get_marker_models,
-    postprocess_markdown,
-)
-
-# Pre-load Marker models (cached singleton, expensive first call)
-await get_marker_models()
-
-# Process through Stage 2 Markdown conversion
-settings = get_settings()
-result = await process_stage2(
-    pdf_path,
-    config=settings.pipeline.stage2,
-    gpu_mode=settings.gpu.enabled,
-)
-
-if result.success:
-    print(f"Converted {result.page_count} pages")
-    print(f"LLM used: {result.llm_used}")
-    print(result.markdown[:500])
-elif result.skipped:
-    print(f"Skipped: {result.skip_reason}")
+# Lifespan auto-manages JobQueue and PaperlessClient on app.state
+# Access in routes via request.app.state.job_queue, request.app.state.client
+# Or use dependency helpers: get_app_settings, get_job_queue, get_paperless_client
 ```
 
 ## Code Style
 
 - All modules use `from __future__ import annotations`
-- Empty modules define `__all__: list[str] = []`
+- All modules define `__all__` exports
 - PEP 561 type checking enabled (py.typed marker)
 - Google-style docstrings
 - Python 3.12+ features (e.g., `class Foo[T]` for generics)
+- Result dataclasses use `@dataclass(slots=True)` (not `frozen=True`)
+
+### Lint/Format Constraints
+
+- **ruff line length**: 88 characters (Black-compatible)
+- **ruff enforces**: SIM102 (combine nested ifs), SIM103 (inline return conditions), TRY300 (move return to `else` block), TRY400 (use `logger.exception` not `logger.error` in `except` blocks)
+- **Path imports** go in `TYPE_CHECKING` block per TC003 rule
+- **mypy**: strict mode with pydantic plugin
+- **Pydantic models** have `str_strip_whitespace=True` - be aware `DocumentUpdate` strips trailing whitespace from content strings
+
+### Test Patterns
+
+- Tests use `pytest-asyncio` with `mode=Mode.AUTO` (no need for explicit `@pytest.mark.asyncio` in practice, though it's used for clarity)
+- Test files ignore: S101 (assert), ARG001/ARG002 (fixtures), PLR2004 (magic values), SLF001 (private access)
+- Fixtures in `tests/conftest.py`: `fixtures_dir`, `pdfs_dir` for test data paths
 
 ## Design Principles
 
