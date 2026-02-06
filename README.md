@@ -635,11 +635,11 @@ Completed: Project initialized with uv, pyproject.toml configured with all depen
   - [x] Exception handlers
   - [x] Static file serving
   - [x] Lifespan management (startup/shutdown)
-- [ ] **API routes** (`src/paperless_ngx_smart_ocr/web/routes/`)
-  - [ ] Document listing with filtering (`documents.py`)
-  - [ ] Document processing trigger
-  - [ ] Dry run endpoint
-  - [ ] Job status endpoints (`jobs.py`)
+- [x] **API routes** (`src/paperless_ngx_smart_ocr/web/routes/`)
+  - [x] Document listing with filtering (`documents.py`)
+  - [x] Document processing trigger
+  - [x] Dry run endpoint
+  - [x] Job status endpoints (`jobs.py`)
   - [x] Health check endpoints (`health.py`)
 - [ ] **htmx templates** (`src/paperless_ngx_smart_ocr/web/templates/`)
   - [ ] Base layout with Tailwind CSS

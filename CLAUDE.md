@@ -19,9 +19,6 @@ uv sync --all-extras           # Install all dependencies including dev
 
 # Running the application
 uv run smart-ocr serve         # Start web server with workers
-uv run smart-ocr process <id>  # Process single document
-uv run smart-ocr --verbose     # Enable debug logging
-uv run smart-ocr --quiet       # Only warnings and errors
 
 # Testing
 uv run pytest                              # Run all tests
@@ -48,31 +45,7 @@ Document → Pre-Processing Analysis → Stage 1 (OCR) → Stage 2 (Markdown) �
                                    Surya Layout      PATCH content
 ```
 
-Each stage can be independently enabled/disabled via configuration. The `PipelineOrchestrator` coordinates the full workflow: download, Stage 1, Stage 2, content PATCH, tag update, and temp file cleanup.
-
-### Integration Patterns
-
-Three ways to trigger processing:
-1. **Polling** (recommended): Service polls paperless-ngx API at intervals
-2. **Webhook**: paperless-ngx Workflow sends POST on document events
-3. **Post-consume**: CLI runs synchronously after document consumption
-
-### Implemented Modules
-
-- **`config/`** - Pydantic settings with YAML + env vars, `${VAR}` interpolation, secret file support
-- **`paperless/`** - Async API client for paperless-ngx (PaperlessClient, Document/Tag models)
-- **`observability/`** - Structured logging with structlog, request ID tracking
-- **`workers/`** - Background job queue (JobQueue wrapping aiojobs), job status tracking
-- **`pipeline/`** - Two-stage processing pipeline with orchestrator
-  - `stage1_ocr.py` - Stage1Processor for OCR via OCRmyPDF + Surya layout
-  - `stage2_markdown.py` - Stage2Processor for Markdown via Marker
-  - `orchestrator.py` - PipelineOrchestrator coordinating both stages end-to-end
-  - `models.py` - Result dataclasses (Stage1Result, Stage2Result, PipelineResult)
-- **`web/`** - FastAPI application with htmx UI
-  - `app.py` - Application factory (`create_app`), lifespan, middleware, exception handlers
-  - `routes/health.py` - Health (`/api/health`) and readiness (`/api/ready`) endpoints
-  - Dependency helpers: `get_app_settings`, `get_job_queue`, `get_paperless_client`
-- **`cli/`** - Typer CLI (entry point: `smart-ocr`)
+Each stage can be independently enabled/disabled via configuration. The `PipelineOrchestrator` coordinates the full workflow: download from paperless-ngx, Stage 1, Stage 2, content PATCH, tag update, and temp file cleanup. The orchestrator supports `dry_run=True` mode which runs stages but skips content updates and tag changes.
 
 ### Key Architectural Patterns
 
@@ -80,31 +53,89 @@ Three ways to trigger processing:
 - **Stage chaining**: If Stage 1 produces OCR output, Stage 2 uses it; if Stage 1 skips/fails, Stage 2 falls back to original PDF.
 - **Tag-based workflow**: Documents tracked via tags (smart-ocr:pending, :completed, :failed, :skip). The orchestrator manages tag transitions.
 - **Content modes**: Stage 2 supports REPLACE (overwrite) or APPEND (preserve existing content) modes when patching the paperless-ngx content field.
+- **Lazy imports in route handlers**: Pipeline modules (`process_document`, `PipelineOrchestrator`) are imported inside endpoint functions to avoid loading heavy ML models at import time. These trigger PLC0415 lint warnings which are suppressed with `# noqa: PLC0415`.
 - **Known limitation**: The paperless-ngx API has no endpoint for replacing a document's file in-place, so OCR'd PDFs are only used within the pipeline run (not re-uploaded).
 
-### Module Usage Examples
+### Web Application
 
-#### Configuration
+The FastAPI app (`web/app.py`) uses an application factory pattern (`create_app`). The lifespan context manager auto-creates and manages `JobQueue` and `PaperlessClient` on `app.state`. Routes access dependencies via `request.app.state.*`.
+
+**API Endpoints (9 total across 3 routers):**
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/health` | Liveness probe (status + version) |
+| `GET /api/ready` | Readiness probe (job queue + paperless connectivity) |
+| `GET /api/documents` | List documents with filtering (pagination, tags, query) |
+| `GET /api/documents/{id}` | Get single document |
+| `POST /api/documents/{id}/process` | Submit for background processing (returns 202) |
+| `POST /api/documents/{id}/dry-run` | Synchronous preview (no side effects) |
+| `GET /api/jobs` | List jobs with filtering (status, document_id, limit) |
+| `GET /api/jobs/{id}` | Get job status |
+| `POST /api/jobs/{id}/cancel` | Cancel pending/running job |
+
+**Exception handlers** map domain errors to HTTP status codes:
+- `PaperlessNotFoundError` → 404, `PaperlessValidationError` → 400
+- `PaperlessAuthenticationError`/`PaperlessConnectionError`/`PaperlessServerError` → 502
+- `PaperlessRateLimitError` → 503
+- `JobNotFoundError` → 404, `JobAlreadyCancelledError` → 409
+
+### Exception Hierarchy
+
+Four exception families, each with a base class:
+- `ConfigurationError` → `ConfigurationFileNotFoundError`, `ConfigurationValidationError`
+- `PaperlessError` → `PaperlessConnectionError`, `PaperlessAuthenticationError`, `PaperlessNotFoundError`, `PaperlessRateLimitError`, `PaperlessServerError`, `PaperlessValidationError`
+- `PipelineError` → `PreprocessingError`, `LayoutDetectionError`, `OCRError`, `MarkerConversionError`
+- `JobError` → `JobNotFoundError`, `JobAlreadyCancelledError`, `JobQueueFullError`, `JobTimeoutError`
+
+### Not Yet Implemented
+
+- **htmx UI**: `web/templates/` and `web/static/` directories exist but are empty placeholders
+- **CLI commands**: Only `serve` works; `process`, `config`, `post-consume` are stubs
+- **Integration patterns**: Polling, webhook, and post-consume handlers not yet built
+- **Observability**: Prometheus metrics and OpenTelemetry tracing modules not yet implemented
+- **Integration tests**: Directory exists but no tests yet; no test PDF fixtures
+
+## Code Style
+
+- All modules use `from __future__ import annotations`
+- All modules define `__all__` exports
+- Google-style docstrings
+- Python 3.12+ features (e.g., `class Foo[T]` for generics)
+- Result dataclasses use `@dataclass(slots=True)` (not `frozen=True`)
+
+### Lint/Format Constraints
+
+- **ruff line length**: 88 characters (Black-compatible)
+- **ruff enforces**: SIM102 (combine nested ifs), SIM103 (inline return conditions), TRY300 (move return to `else` block), TRY400 (use `logger.exception` not `logger.error` in `except` blocks)
+- **Third-party imports** go in `TYPE_CHECKING` block per TC001/TC002/TC003 rules. Exception: imports FastAPI needs at runtime for query param validation (e.g., `JobStatus` enum) stay at module level with `# noqa: TC001`.
+- **mypy**: strict mode with pydantic plugin
+- **Pydantic models** have `str_strip_whitespace=True` - be aware `DocumentUpdate` strips trailing whitespace from content strings
+
+### Test Patterns
+
+- Tests use `pytest-asyncio` with `mode=Mode.AUTO` (no explicit `@pytest.mark.asyncio` needed)
+- Test files ignore: S101 (assert), ARG001/ARG002 (fixtures), PLR2004 (magic values), SLF001 (private access)
+- Fixtures in `tests/conftest.py`: `fixtures_dir`, `pdfs_dir` for test data paths
+- Web route tests use `TestClient` with mocked `JobQueue` and `PaperlessClient` via `unittest.mock.patch`. Use `MagicMock()` as base for mock objects (not `AsyncMock()`) with explicit `AsyncMock()` for specific async methods to avoid unawaited coroutine warnings on garbage collection.
+- Pipeline orchestrator patches target the source module (`paperless_ngx_smart_ocr.pipeline.orchestrator.process_document`) not the route module, since lazy imports don't create module-level attributes.
+- `pyproject.toml` has a `filterwarnings` entry to ignore `AsyncMockMixin` `PytestUnraisableExceptionWarning` from TestClient lifecycle.
+
+## Module Usage Examples
+
+### Configuration
 
 ```python
 from paperless_ngx_smart_ocr.config import load_settings, get_settings
 
-# Load from YAML file or environment
 settings = load_settings()  # Searches ./config.yaml, ~/.config/smart-ocr/config.yaml
-settings = load_settings("/path/to/config.yaml")
-
-# Access nested settings
 settings.paperless.url           # http://localhost:8000
 settings.pipeline.stage1.enabled # True
-settings.web.port                # 8080
-
-# Use cached singleton
-settings = get_settings()
 ```
 
 Environment variables use `SMARTOCR_` prefix with `__` delimiter (e.g., `SMARTOCR_WEB__PORT=9000`).
 
-#### Paperless-ngx Client
+### Paperless-ngx Client
 
 ```python
 from paperless_ngx_smart_ocr.paperless import PaperlessClient, DocumentUpdate
@@ -116,66 +147,18 @@ async with PaperlessClient(base_url, token) as client:
     await client.add_tags_to_document(doc_id, [tag.id])
 ```
 
-#### Logging
+### Pipeline Orchestrator
 
 ```python
-from paperless_ngx_smart_ocr.observability import configure_logging, get_logger, set_request_id
+from paperless_ngx_smart_ocr.pipeline import process_document
 
-configure_logging(level="debug")  # At startup
-logger = get_logger(__name__)
-set_request_id()  # For request correlation
-logger.info("processing_document", document_id=123, stage="ocr")
-```
-
-#### Pipeline Orchestrator
-
-```python
-from paperless_ngx_smart_ocr.pipeline import PipelineOrchestrator, process_document
-
-# Full pipeline: download → Stage 1 → Stage 2 → content PATCH → tag update
 async with PaperlessClient(base_url, token) as client:
-    result = await process_document(
-        document_id,
-        settings=settings,
-        client=client,
-    )
+    result = await process_document(document_id, settings=settings, client=client)
     # result.success, result.stage1_result, result.stage2_result,
-    # result.tags_updated, result.content_updated, result.error
+    # result.tags_updated, result.content_updated, result.dry_run, result.error
 ```
 
-#### Pipeline (Stage 1 OCR)
-
-```python
-from paperless_ngx_smart_ocr.pipeline import analyze_document, process_stage1
-
-# Analyze document for born-digital detection
-analysis = analyze_document(pdf_path)
-
-# Process through Stage 1 OCR
-result = await process_stage1(
-    input_path, output_path,
-    config=settings.pipeline.stage1,
-    gpu_mode=settings.gpu.enabled,
-)
-```
-
-#### Pipeline (Stage 2 Markdown)
-
-```python
-from paperless_ngx_smart_ocr.pipeline import process_stage2, get_marker_models
-
-# Pre-load Marker models (cached singleton, expensive first call)
-await get_marker_models()
-
-# Process through Stage 2 Markdown conversion
-result = await process_stage2(
-    pdf_path,
-    config=settings.pipeline.stage2,
-    gpu_mode=settings.gpu.enabled,
-)
-```
-
-#### Job Queue
+### Job Queue
 
 ```python
 from paperless_ngx_smart_ocr.workers import JobQueue, JobStatus
@@ -189,46 +172,15 @@ async with JobQueue(workers=4, timeout=600) as queue:
     completed = await queue.wait(job.id)
 ```
 
-#### Web Application
+### Web Application
 
 ```python
 from paperless_ngx_smart_ocr.web import create_app
-from paperless_ngx_smart_ocr.config import load_settings
 
-# Create app with custom settings
-settings = load_settings("/path/to/config.yaml")
 app = create_app(settings=settings)
-
-# Or use defaults (loads from standard config locations)
-app = create_app()
-
 # Lifespan auto-manages JobQueue and PaperlessClient on app.state
 # Access in routes via request.app.state.job_queue, request.app.state.client
-# Or use dependency helpers: get_app_settings, get_job_queue, get_paperless_client
 ```
-
-## Code Style
-
-- All modules use `from __future__ import annotations`
-- All modules define `__all__` exports
-- PEP 561 type checking enabled (py.typed marker)
-- Google-style docstrings
-- Python 3.12+ features (e.g., `class Foo[T]` for generics)
-- Result dataclasses use `@dataclass(slots=True)` (not `frozen=True`)
-
-### Lint/Format Constraints
-
-- **ruff line length**: 88 characters (Black-compatible)
-- **ruff enforces**: SIM102 (combine nested ifs), SIM103 (inline return conditions), TRY300 (move return to `else` block), TRY400 (use `logger.exception` not `logger.error` in `except` blocks)
-- **Path imports** go in `TYPE_CHECKING` block per TC003 rule
-- **mypy**: strict mode with pydantic plugin
-- **Pydantic models** have `str_strip_whitespace=True` - be aware `DocumentUpdate` strips trailing whitespace from content strings
-
-### Test Patterns
-
-- Tests use `pytest-asyncio` with `mode=Mode.AUTO` (no need for explicit `@pytest.mark.asyncio` in practice, though it's used for clarity)
-- Test files ignore: S101 (assert), ARG001/ARG002 (fixtures), PLR2004 (magic values), SLF001 (private access)
-- Fixtures in `tests/conftest.py`: `fixtures_dir`, `pdfs_dir` for test data paths
 
 ## Design Principles
 

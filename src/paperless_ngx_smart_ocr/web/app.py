@@ -32,6 +32,7 @@ from paperless_ngx_smart_ocr.paperless.exceptions import (
     PaperlessValidationError,
 )
 from paperless_ngx_smart_ocr.workers.exceptions import (
+    JobAlreadyCancelledError,
     JobNotFoundError,
 )
 
@@ -246,6 +247,19 @@ def _register_exception_handlers(app: FastAPI) -> None:
             },
         )
 
+    @app.exception_handler(JobAlreadyCancelledError)
+    async def job_already_cancelled_handler(
+        _request: Request,
+        exc: JobAlreadyCancelledError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "detail": str(exc),
+                "error_type": "JobAlreadyCancelledError",
+            },
+        )
+
     @app.exception_handler(Exception)
     async def generic_error_handler(
         _request: Request,
@@ -306,11 +320,19 @@ def _include_routers(app: FastAPI) -> None:
     Args:
         app: The FastAPI application.
     """
+    from paperless_ngx_smart_ocr.web.routes.documents import (
+        router as documents_router,
+    )
     from paperless_ngx_smart_ocr.web.routes.health import (
         router as health_router,
     )
+    from paperless_ngx_smart_ocr.web.routes.jobs import (
+        router as jobs_router,
+    )
 
     app.include_router(health_router)
+    app.include_router(documents_router)
+    app.include_router(jobs_router)
 
 
 # -------------------------------------------------------------------

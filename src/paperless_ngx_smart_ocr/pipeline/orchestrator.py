@@ -81,11 +81,12 @@ class PipelineOrchestrator:
         self._client = client
         self._logger = get_logger(__name__)
 
-    async def process(
+    async def process(  # noqa: C901
         self,
         document_id: int,
         *,
         force: bool = False,
+        dry_run: bool = False,
     ) -> PipelineResult:
         """Process a document through the full pipeline.
 
@@ -98,6 +99,8 @@ class PipelineOrchestrator:
         Args:
             document_id: The paperless-ngx document ID.
             force: If True, force processing regardless of born-digital status.
+            dry_run: If True, run stages but skip content updates and
+                tag changes in paperless-ngx (preview mode).
 
         Returns:
             PipelineResult with the processing outcome.
@@ -144,7 +147,10 @@ class PipelineOrchestrator:
                         error=str(exc),
                     )
                     processing_time = time.monotonic() - start_time
-                    tags_updated = await self._update_tags(document_id, success=False)
+                    if not dry_run:
+                        tags_updated = await self._update_tags(
+                            document_id, success=False
+                        )
                     return PipelineResult(
                         document_id=document_id,
                         success=False,
@@ -155,6 +161,7 @@ class PipelineOrchestrator:
                         tags_updated=tags_updated,
                         content_updated=False,
                         document_uploaded=False,
+                        dry_run=dry_run,
                         error=f"Download failed: {exc}",
                         processing_time_seconds=processing_time,
                     )
@@ -202,7 +209,11 @@ class PipelineOrchestrator:
                     )
 
                     # Update content if Stage 2 succeeded
-                    if stage2_result.success and not stage2_result.skipped:
+                    if (
+                        stage2_result.success
+                        and not stage2_result.skipped
+                        and not dry_run
+                    ):
                         content_updated = await self._update_content(
                             document_id,
                             stage2_result.markdown,
@@ -217,8 +228,9 @@ class PipelineOrchestrator:
                 stage2_enabled=stage2_config.enabled,
             )
 
-            # Step 6: Update tags
-            tags_updated = await self._update_tags(document_id, success=success)
+            # Step 6: Update tags (skip in dry-run mode)
+            if not dry_run:
+                tags_updated = await self._update_tags(document_id, success=success)
 
             processing_time = time.monotonic() - start_time
             self._logger.info(
@@ -238,6 +250,7 @@ class PipelineOrchestrator:
                 tags_updated=tags_updated,
                 content_updated=content_updated,
                 document_uploaded=False,
+                dry_run=dry_run,
                 processing_time_seconds=processing_time,
             )
 
@@ -248,7 +261,8 @@ class PipelineOrchestrator:
                 document_id=document_id,
                 error=str(exc),
             )
-            tags_updated = await self._update_tags(document_id, success=False)
+            if not dry_run:
+                tags_updated = await self._update_tags(document_id, success=False)
             return PipelineResult(
                 document_id=document_id,
                 success=False,
@@ -259,6 +273,7 @@ class PipelineOrchestrator:
                 tags_updated=tags_updated,
                 content_updated=content_updated,
                 document_uploaded=False,
+                dry_run=dry_run,
                 error=str(exc),
                 processing_time_seconds=processing_time,
             )
@@ -460,6 +475,7 @@ async def process_document(
     settings: Settings,
     client: PaperlessClient,
     force: bool = False,
+    dry_run: bool = False,
 ) -> PipelineResult:
     """Convenience function to process a document through the full pipeline.
 
@@ -470,6 +486,8 @@ async def process_document(
         settings: Application settings.
         client: Paperless-ngx API client.
         force: If True, force processing regardless of born-digital status.
+        dry_run: If True, run stages but skip content updates and
+            tag changes in paperless-ngx (preview mode).
 
     Returns:
         PipelineResult with the processing outcome.
@@ -492,4 +510,4 @@ async def process_document(
         ```
     """
     orchestrator = PipelineOrchestrator(settings=settings, client=client)
-    return await orchestrator.process(document_id, force=force)
+    return await orchestrator.process(document_id, force=force, dry_run=dry_run)
