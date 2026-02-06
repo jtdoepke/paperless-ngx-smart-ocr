@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Jobs{% endblock %}
+
+{% block content %}
+<div class="space-y-4">
+  <div class="flex items-center justify-between">
+    <h1 class="text-2xl font-bold">Jobs</h1>
+  </div>
+
+  <!-- Status filter -->
+  <div class="flex flex-wrap gap-2">
+    <a href="/jobs"
+       hx-get="/jobs"
+       hx-target="#job-list"
+       hx-push-url="true"
+       class="px-3 py-1 text-sm rounded-md border {{ 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300' if not current_status else 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700' }}">
+      All
+    </a>
+    {% for s in statuses %}
+    <a href="/jobs?status={{ s }}"
+       hx-get="/jobs?status={{ s }}"
+       hx-target="#job-list"
+       hx-push-url="true"
+       class="px-3 py-1 text-sm rounded-md border {{ 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300' if current_status == s else 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700' }}">
+      {{ s | capitalize }}
+    </a>
+    {% endfor %}
+  </div>
+
+  <!-- Job list (auto-refreshes) -->
+  <div id="job-list"
+       hx-get="/jobs{% if current_status %}?status={{ current_status }}{% endif %}"
+       hx-trigger="every 5s"
+       hx-target="this"
+       hx-swap="innerHTML">
+    {% include "partials/job_list.html" %}
+  </div>
+</div>
+{% endblock %}

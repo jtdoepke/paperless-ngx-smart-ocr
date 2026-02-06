@@ -22,8 +22,10 @@ from paperless_ngx_smart_ocr.paperless.exceptions import (
     PaperlessValidationError,
 )
 from paperless_ngx_smart_ocr.paperless.models import (
+    Correspondent,
     Document,
     DocumentMetadata,
+    DocumentType,
     DocumentUpdate,
     PaginatedResponse,
     Tag,
@@ -336,6 +338,10 @@ class PaperlessClient:
         document_type: int | None = None,
         query: str | None = None,
         truncate_content: bool = True,
+        created_from: str | None = None,
+        created_to: str | None = None,
+        added_from: str | None = None,
+        added_to: str | None = None,
     ) -> PaginatedResponse[Document]:
         """List documents with optional filtering.
 
@@ -349,6 +355,10 @@ class PaperlessClient:
             document_type: Filter by document type ID.
             query: Full-text search query.
             truncate_content: If True, truncate content in response.
+            created_from: Filter by created date (YYYY-MM-DD), from.
+            created_to: Filter by created date (YYYY-MM-DD), to.
+            added_from: Filter by added date (YYYY-MM-DD), from.
+            added_to: Filter by added date (YYYY-MM-DD), to.
 
         Returns:
             Paginated response containing documents.
@@ -371,6 +381,20 @@ class PaperlessClient:
             params["document_type__id"] = document_type
         if query:
             params["query"] = query
+
+        # Date range filters
+        params.update(
+            {
+                k: v
+                for k, v in {
+                    "created__date__gt": created_from,
+                    "created__date__lt": created_to,
+                    "added__date__gt": added_from,
+                    "added__date__lt": added_to,
+                }.items()
+                if v
+            }
+        )
 
         response = await self._request("GET", "/documents/", params=params)
         data = response.json()
@@ -690,6 +714,70 @@ class PaperlessClient:
         return await self.update_document(
             document_id,
             DocumentUpdate(tags=new_tags),
+        )
+
+    # -------------------------------------------------------------------------
+    # Correspondent Operations
+    # -------------------------------------------------------------------------
+
+    async def list_correspondents(
+        self,
+        *,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> PaginatedResponse[Correspondent]:
+        """List all correspondents.
+
+        Args:
+            page: Page number.
+            page_size: Results per page.
+
+        Returns:
+            Paginated response of correspondents.
+        """
+        response = await self._request(
+            "GET",
+            "/correspondents/",
+            params={"page": page, "page_size": page_size},
+        )
+        data = response.json()
+        return PaginatedResponse[Correspondent](
+            count=data["count"],
+            next=data.get("next"),
+            previous=data.get("previous"),
+            results=[Correspondent.model_validate(c) for c in data["results"]],
+        )
+
+    # -------------------------------------------------------------------------
+    # Document Type Operations
+    # -------------------------------------------------------------------------
+
+    async def list_document_types(
+        self,
+        *,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> PaginatedResponse[DocumentType]:
+        """List all document types.
+
+        Args:
+            page: Page number.
+            page_size: Results per page.
+
+        Returns:
+            Paginated response of document types.
+        """
+        response = await self._request(
+            "GET",
+            "/document_types/",
+            params={"page": page, "page_size": page_size},
+        )
+        data = response.json()
+        return PaginatedResponse[DocumentType](
+            count=data["count"],
+            next=data.get("next"),
+            previous=data.get("previous"),
+            results=[DocumentType.model_validate(d) for d in data["results"]],
         )
 
     # -------------------------------------------------------------------------

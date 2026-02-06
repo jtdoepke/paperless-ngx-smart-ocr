@@ -11,6 +11,14 @@ from paperless_ngx_smart_ocr.web.routes.health import (
 from paperless_ngx_smart_ocr.web.routes.jobs import (
     router as jobs_router,
 )
+from paperless_ngx_smart_ocr.web.routes.views import (
+    router as views_router,
+)
 
 
-__all__ = ["documents_router", "health_router", "jobs_router"]
+__all__ = [
+    "documents_router",
+    "health_router",
+    "jobs_router",
+    "views_router",
+]

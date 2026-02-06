@@ -641,18 +641,18 @@ Completed: Project initialized with uv, pyproject.toml configured with all depen
   - [x] Dry run endpoint
   - [x] Job status endpoints (`jobs.py`)
   - [x] Health check endpoints (`health.py`)
-- [ ] **htmx templates** (`src/paperless_ngx_smart_ocr/web/templates/`)
-  - [ ] Base layout with Tailwind CSS
-  - [ ] Dark mode support with system preference detection
-  - [ ] Document list view
-  - [ ] Document detail view
-  - [ ] Processing form (stage selection, options override)
-  - [ ] Job progress display
-  - [ ] Partial templates for htmx updates
-- [ ] **Tailwind CSS setup**
-  - [ ] tailwind.config.js configuration
-  - [ ] Build pipeline (npm scripts or standalone CLI)
-  - [ ] Dark mode class configuration
+- [x] **htmx templates** (`src/paperless_ngx_smart_ocr/web/templates/`)
+  - [x] Base layout with Tailwind CSS
+  - [x] Dark mode support with system preference detection
+  - [x] Document list view with filtering (tags, correspondent, document type, date ranges)
+  - [x] Document detail view
+  - [x] Processing form (stage selection, options override)
+  - [x] Job progress display
+  - [x] Partial templates for htmx updates
+- [x] **Tailwind CSS setup**
+  - [x] tailwind.config.js configuration
+  - [x] CDN setup (standalone CLI migration path documented)
+  - [x] Dark mode class configuration
 
 ### Phase 7: Observability
 

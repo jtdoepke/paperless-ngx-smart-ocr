@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}Document {{ document.id }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <!-- Header -->
+  <div class="flex items-start justify-between">
+    <div>
+      <h1 class="text-2xl font-bold">{{ document.title }}</h1>
+      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+        Document #{{ document.id }}
+      </p>
+    </div>
+    <a href="/documents"
+       class="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">
+      &larr; Back to list
+    </a>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Metadata -->
+    <div class="lg:col-span-2 space-y-4">
+      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+        <h2 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">Details</h2>
+        <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+          <dt class="text-gray-500 dark:text-gray-400">Filename</dt>
+          <dd class="text-gray-900 dark:text-gray-100">{{ document.original_file_name or "N/A" }}</dd>
+          <dt class="text-gray-500 dark:text-gray-400">Created</dt>
+          <dd class="text-gray-900 dark:text-gray-100">{{ document.created_date }}</dd>
+          <dt class="text-gray-500 dark:text-gray-400">Modified</dt>
+          <dd class="text-gray-900 dark:text-gray-100">{{ document.modified }}</dd>
+          <dt class="text-gray-500 dark:text-gray-400">Tags</dt>
+          <dd class="text-gray-900 dark:text-gray-100">
+            {% if document.tags %}
+            {{ document.tags | join(", ") }}
+            {% else %}
+            <span class="text-gray-400 dark:text-gray-500">None</span>
+            {% endif %}
+          </dd>
+        </dl>
+      </div>
+
+      <!-- Content preview -->
+      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+        <h2 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">Content</h2>
+        {% if document.content %}
+        <pre class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words max-h-96 overflow-y-auto">{{ document.content }}</pre>
+        {% else %}
+        <p class="text-sm text-gray-400 dark:text-gray-500 italic">No content available.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Processing panel -->
+    <div class="space-y-4">
+      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+        <h2 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">Processing</h2>
+
+        <div class="space-y-3 text-sm">
+          <div class="flex items-center justify-between">
+            <span class="text-gray-500 dark:text-gray-400">Stage 1 (OCR)</span>
+            {% if stage1_enabled %}
+            <span class="text-green-600 dark:text-green-400">Enabled</span>
+            {% else %}
+            <span class="text-gray-400 dark:text-gray-500">Disabled</span>
+            {% endif %}
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-gray-500 dark:text-gray-400">Stage 2 (Markdown)</span>
+            {% if stage2_enabled %}
+            <span class="text-green-600 dark:text-green-400">Enabled</span>
+            {% else %}
+            <span class="text-gray-400 dark:text-gray-500">Disabled</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <hr class="my-4 border-gray-200 dark:border-gray-700">
+
+        <!-- Process form -->
+        <form class="space-y-3">
+          <label class="flex items-center space-x-2 text-sm">
+            <input type="checkbox" name="force" value="true"
+                   class="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500">
+            <span class="text-gray-700 dark:text-gray-300">Force reprocessing</span>
+          </label>
+
+          <div class="flex space-x-2">
+            <button type="submit"
+                    hx-post="/documents/{{ document.id }}/process"
+                    hx-target="#result-area"
+                    hx-swap="innerHTML"
+                    hx-include="[name='force']"
+                    class="flex-1 px-3 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
+              Process
+            </button>
+            <button type="submit"
+                    hx-post="/documents/{{ document.id }}/dry-run"
+                    hx-target="#result-area"
+                    hx-swap="innerHTML"
+                    hx-include="[name='force']"
+                    class="flex-1 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
+              Dry Run
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Result area (filled by htmx) -->
+      <div id="result-area"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}

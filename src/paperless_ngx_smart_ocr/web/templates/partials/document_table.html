@@ -1,0 +1,60 @@
+{# Build filter query string for pagination links #}
+{% set filter_qs = "" %}
+{% if filters is defined %}
+  {% for key, val in filters.items() if val %}
+    {% set filter_qs = filter_qs ~ "&" ~ key ~ "=" ~ val %}
+  {% endfor %}
+{% endif %}
+
+<table class="min-w-full">
+  <thead>
+    <tr class="border-b border-gray-300 dark:border-gray-600">
+      <th class="py-3 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">ID</th>
+      <th class="py-3 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Title</th>
+      <th class="py-3 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Filename</th>
+      <th class="py-3 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Created</th>
+      <th class="py-3 px-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for doc in documents.results %}
+    {% include "partials/document_row.html" %}
+    {% endfor %}
+    {% if not documents.results %}
+    <tr>
+      <td colspan="5" class="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+        No documents found.
+      </td>
+    </tr>
+    {% endif %}
+  </tbody>
+</table>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<nav class="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-gray-700 px-4 pb-2">
+  <p class="text-sm text-gray-500 dark:text-gray-400">
+    Page {{ page }} of {{ total_pages }} ({{ documents.count }} total)
+  </p>
+  <div class="flex space-x-2">
+    {% if page > 1 %}
+    <a href="/documents?page={{ page - 1 }}&page_size={{ page_size }}{{ filter_qs }}"
+       hx-get="/documents?page={{ page - 1 }}&page_size={{ page_size }}{{ filter_qs }}"
+       hx-target="#document-table"
+       hx-push-url="true"
+       class="px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300">
+      Previous
+    </a>
+    {% endif %}
+    {% if page < total_pages %}
+    <a href="/documents?page={{ page + 1 }}&page_size={{ page_size }}{{ filter_qs }}"
+       hx-get="/documents?page={{ page + 1 }}&page_size={{ page_size }}{{ filter_qs }}"
+       hx-target="#document-table"
+       hx-push-url="true"
+       class="px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300">
+      Next
+    </a>
+    {% endif %}
+  </div>
+</nav>
+{% endif %}

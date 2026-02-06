@@ -301,12 +301,20 @@ def _mount_static_files(app: FastAPI) -> None:
 def _configure_templates(app: FastAPI) -> None:
     """Configure Jinja2 template rendering.
 
+    Sets up template directory and injects global context variables
+    (``version``, ``theme_mode``) so they are available in every
+    template without being passed explicitly by each route.
+
     Args:
         app: The FastAPI application.
     """
-    app.state.templates = Jinja2Templates(
-        directory=str(_TEMPLATES_DIR),
-    )
+    from paperless_ngx_smart_ocr import __version__
+
+    templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+    settings: Settings = app.state.settings
+    templates.env.globals["version"] = __version__
+    templates.env.globals["theme_mode"] = settings.web.theme.value
+    app.state.templates = templates
 
 
 # -------------------------------------------------------------------
@@ -329,10 +337,14 @@ def _include_routers(app: FastAPI) -> None:
     from paperless_ngx_smart_ocr.web.routes.jobs import (
         router as jobs_router,
     )
+    from paperless_ngx_smart_ocr.web.routes.views import (
+        router as views_router,
+    )
 
     app.include_router(health_router)
     app.include_router(documents_router)
     app.include_router(jobs_router)
+    app.include_router(views_router)
 
 
 # -------------------------------------------------------------------

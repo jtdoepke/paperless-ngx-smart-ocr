@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+
+{% block title %}Documents{% endblock %}
+
+{% block content %}
+<div class="space-y-4">
+  <div class="flex items-center justify-between">
+    <h1 class="text-2xl font-bold">Documents</h1>
+    <button type="button"
+            onclick="document.getElementById('filter-panel').classList.toggle('hidden')"
+            class="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">
+      Filters
+    </button>
+  </div>
+
+  <!-- Filter panel -->
+  <div id="filter-panel" class="hidden bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+    <form id="filter-form"
+          hx-get="/documents"
+          hx-target="#document-table"
+          hx-push-url="true">
+      <input type="hidden" name="page_size" value="{{ page_size }}">
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- Search -->
+        <div>
+          <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Search</label>
+          <input type="search"
+                 name="query"
+                 value="{{ filters.query }}"
+                 placeholder="Full-text search..."
+                 class="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+        </div>
+
+        <!-- Correspondent -->
+        <div>
+          <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Correspondent</label>
+          <select name="correspondent"
+                  class="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            <option value="">All</option>
+            {% for c in correspondents %}
+            <option value="{{ c.id }}" {{ 'selected' if filters.correspondent == c.id }}>{{ c.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Document Type -->
+        <div>
+          <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Document Type</label>
+          <select name="document_type"
+                  class="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            <option value="">All</option>
+            {% for dt in document_types %}
+            <option value="{{ dt.id }}" {{ 'selected' if filters.document_type == dt.id }}>{{ dt.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Tags (include) -->
+        <div>
+          <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Tags (include)</label>
+          <select name="tags_include"
+                  multiple
+                  size="4"
+                  class="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            {% for tag in tags %}
+            <option value="{{ tag.id }}" {{ 'selected' if tag.id|string in filters.tags_include.split(',') }}>{{ tag.name }}</option>
+            {% endfor %}
+          </select>
+          <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">Hold Ctrl/Cmd to select multiple</p>
+        </div>
+
+        <!-- Created date range -->
+        <div>
+          <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Created Date</label>
+          <div class="flex space-x-2">
+            <input type="date"
+                   name="created_from"
+                   value="{{ filters.created_from }}"
+                   class="flex-1 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            <span class="self-center text-xs text-gray-400">to</span>
+            <input type="date"
+                   name="created_to"
+                   value="{{ filters.created_to }}"
+                   class="flex-1 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+          </div>
+        </div>
+
+        <!-- Added date range -->
+        <div>
+          <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Added Date</label>
+          <div class="flex space-x-2">
+            <input type="date"
+                   name="added_from"
+                   value="{{ filters.added_from }}"
+                   class="flex-1 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            <span class="self-center text-xs text-gray-400">to</span>
+            <input type="date"
+                   name="added_to"
+                   value="{{ filters.added_to }}"
+                   class="flex-1 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+          </div>
+        </div>
+      </div>
+
+      <!-- Sort + Actions -->
+      <div class="mt-4 flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <label class="text-xs font-medium text-gray-500 dark:text-gray-400">Sort by</label>
+          <select name="ordering"
+                  class="px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            <option value="" {{ 'selected' if not filters.ordering }}>Default</option>
+            <option value="-created" {{ 'selected' if filters.ordering == '-created' }}>Created (newest)</option>
+            <option value="created" {{ 'selected' if filters.ordering == 'created' }}>Created (oldest)</option>
+            <option value="-added" {{ 'selected' if filters.ordering == '-added' }}>Added (newest)</option>
+            <option value="added" {{ 'selected' if filters.ordering == 'added' }}>Added (oldest)</option>
+            <option value="title" {{ 'selected' if filters.ordering == 'title' }}>Title (A-Z)</option>
+            <option value="-title" {{ 'selected' if filters.ordering == '-title' }}>Title (Z-A)</option>
+          </select>
+        </div>
+        <div class="flex space-x-2">
+          <a href="/documents"
+             class="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">
+            Clear
+          </a>
+          <button type="submit"
+                  class="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
+            Apply
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <!-- Document table -->
+  <div id="document-table"
+       class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-x-auto">
+    {% include "partials/document_table.html" %}
+  </div>
+</div>
+
+{% block scripts %}
+<script>
+  // Handle multi-select tags: join selected values into comma-separated string
+  document.getElementById('filter-form').addEventListener('htmx:configRequest', function(evt) {
+    var tagsSelect = document.querySelector('select[name="tags_include"]');
+    if (tagsSelect) {
+      var selected = Array.from(tagsSelect.selectedOptions).map(function(o) { return o.value; });
+      evt.detail.parameters['tags_include'] = selected.join(',');
+    }
+    // Remove empty params to keep URL clean
+    Object.keys(evt.detail.parameters).forEach(function(key) {
+      if (evt.detail.parameters[key] === '' || evt.detail.parameters[key] === null) {
+        delete evt.detail.parameters[key];
+      }
+    });
+  });
+</script>
+{% endblock %}
+{% endblock %}

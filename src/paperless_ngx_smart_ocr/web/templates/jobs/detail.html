@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Job {{ job.id }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <div class="flex items-start justify-between">
+    <div>
+      <h1 class="text-2xl font-bold">{{ job.name or "Job " ~ job.id }}</h1>
+      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+        ID: {{ job.id }}
+      </p>
+    </div>
+    <a href="/jobs"
+       class="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">
+      &larr; Back to jobs
+    </a>
+  </div>
+
+  <div id="job-detail-card">
+    {% include "partials/job_card.html" %}
+  </div>
+
+  <!-- Extended details -->
+  <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+    <h2 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">Details</h2>
+    <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+      <dt class="text-gray-500 dark:text-gray-400">Created</dt>
+      <dd class="text-gray-900 dark:text-gray-100">{{ job.created_at }}</dd>
+      {% if job.started_at %}
+      <dt class="text-gray-500 dark:text-gray-400">Started</dt>
+      <dd class="text-gray-900 dark:text-gray-100">{{ job.started_at }}</dd>
+      {% endif %}
+      {% if job.completed_at %}
+      <dt class="text-gray-500 dark:text-gray-400">Completed</dt>
+      <dd class="text-gray-900 dark:text-gray-100">{{ job.completed_at }}</dd>
+      {% endif %}
+      {% if job.document_id %}
+      <dt class="text-gray-500 dark:text-gray-400">Document</dt>
+      <dd>
+        <a href="/documents/{{ job.document_id }}" class="text-blue-600 dark:text-blue-400 hover:underline">
+          #{{ job.document_id }}
+        </a>
+      </dd>
+      {% endif %}
+    </dl>
+
+    {% if job.result %}
+    <hr class="my-4 border-gray-200 dark:border-gray-700">
+    <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Result</h3>
+    {% if job.result.success %}
+    <p class="text-sm text-green-600 dark:text-green-400">Completed successfully.</p>
+    {% else %}
+    <p class="text-sm text-red-600 dark:text-red-400">{{ job.result.error_message or "Unknown error" }}</p>
+    {% endif %}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,21 @@
+<tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+  <td class="py-3 px-4 text-sm text-gray-500 dark:text-gray-400">{{ doc.id }}</td>
+  <td class="py-3 px-4">
+    <a href="/documents/{{ doc.id }}"
+       class="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">
+      {{ doc.title }}
+    </a>
+  </td>
+  <td class="py-3 px-4 text-sm text-gray-500 dark:text-gray-400">
+    {{ doc.original_file_name }}
+  </td>
+  <td class="py-3 px-4 text-sm text-gray-500 dark:text-gray-400">
+    {{ doc.created_date }}
+  </td>
+  <td class="py-3 px-4">
+    <a href="/documents/{{ doc.id }}"
+       class="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+      View
+    </a>
+  </td>
+</tr>
