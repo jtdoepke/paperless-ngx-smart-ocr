@@ -570,7 +570,7 @@ Completed: Project initialized with uv, pyproject.toml configured with all depen
   - [x] Retry logic with exponential backoff
   - [x] Rate limiting support
 
-### Phase 3: Processing Pipeline
+### Phase 3: Processing Pipeline ✓
 
 - [x] **Stage 1: OCR Pipeline** (`src/paperless_ngx_smart_ocr/pipeline/stage1_ocr.py`)
   - [x] Surya layout detection integration
@@ -585,11 +585,11 @@ Completed: Project initialized with uv, pyproject.toml configured with all depen
   - [x] LLM toggle support (configurable on/off)
   - [x] Markdown post-processing and cleanup
   - [x] Content field patching via paperless API
-- [ ] **Pipeline orchestrator** (`src/paperless_ngx_smart_ocr/pipeline/orchestrator.py`)
-  - [ ] Stage coordination and sequencing
-  - [ ] Skip logic based on configuration
-  - [ ] Error handling and recovery
-  - [ ] Progress tracking and reporting
+- [x] **Pipeline orchestrator** (`src/paperless_ngx_smart_ocr/pipeline/orchestrator.py`)
+  - [x] Stage coordination and sequencing
+  - [x] Skip logic based on configuration
+  - [x] Error handling and recovery
+  - [x] Progress tracking and reporting
 - [x] **Layout detection** (`src/paperless_ngx_smart_ocr/pipeline/layout.py`)
   - [x] Surya model loading and caching
   - [x] Confidence thresholding

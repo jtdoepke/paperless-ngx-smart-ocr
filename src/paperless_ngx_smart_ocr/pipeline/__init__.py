@@ -62,9 +62,14 @@ from paperless_ngx_smart_ocr.pipeline.models import (
     LayoutRegion,
     LayoutResult,
     PageAnalysis,
+    PipelineResult,
     RegionLabel,
     Stage1Result,
     Stage2Result,
+)
+from paperless_ngx_smart_ocr.pipeline.orchestrator import (
+    PipelineOrchestrator,
+    process_document,
 )
 from paperless_ngx_smart_ocr.pipeline.preprocessing import (
     analyze_document,
@@ -91,6 +96,8 @@ __all__ = [
     "OCRError",
     "PageAnalysis",
     "PipelineError",
+    "PipelineOrchestrator",
+    "PipelineResult",
     "PreprocessingError",
     "RegionLabel",
     "Stage1Processor",
@@ -104,6 +111,7 @@ __all__ = [
     "get_marker_models",
     "has_text_layer",
     "postprocess_markdown",
+    "process_document",
     "process_stage1",
     "process_stage2",
 ]

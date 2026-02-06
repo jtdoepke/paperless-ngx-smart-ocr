@@ -23,6 +23,7 @@ __all__ = [
     "LayoutRegion",
     "LayoutResult",
     "PageAnalysis",
+    "PipelineResult",
     "RegionLabel",
     "Stage1Result",
     "Stage2Result",
@@ -411,6 +412,77 @@ class Stage2Result:
             "llm_used": self.llm_used,
             "skipped": self.skipped,
             "skip_reason": self.skip_reason,
+            "error": self.error,
+            "processing_time_seconds": self.processing_time_seconds,
+            "created_at": self.created_at.isoformat(),
+        }
+
+
+# ---------------------------------------------------------------------------
+# Pipeline Result Model
+# ---------------------------------------------------------------------------
+
+
+@dataclass(slots=True)
+class PipelineResult:
+    """Result of the full pipeline orchestration.
+
+    Captures the outcome of processing a document through both Stage 1 (OCR)
+    and Stage 2 (Markdown), including tag and content update status.
+
+    Attributes:
+        document_id: The paperless-ngx document ID.
+        success: Whether the overall pipeline completed successfully.
+        stage1_result: Stage 1 OCR result, or None if not run.
+        stage2_result: Stage 2 Markdown result, or None if not run.
+        stage1_skipped_by_config: Whether Stage 1 was skipped due to config.
+        stage2_skipped_by_config: Whether Stage 2 was skipped due to config.
+        tags_updated: Whether tags were successfully updated.
+        content_updated: Whether document content was successfully updated.
+        document_uploaded: Whether the OCR'd PDF was re-uploaded.
+        error: Error message if the pipeline failed.
+        processing_time_seconds: Total pipeline processing time in seconds.
+        created_at: Timestamp when processing started.
+    """
+
+    document_id: int
+    success: bool
+    stage1_result: Stage1Result | None
+    stage2_result: Stage2Result | None
+    stage1_skipped_by_config: bool
+    stage2_skipped_by_config: bool
+    tags_updated: bool
+    content_updated: bool
+    document_uploaded: bool
+    error: str | None = None
+    processing_time_seconds: float = 0.0
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+    @property
+    def is_terminal(self) -> bool:
+        """Whether this result represents a terminal state."""
+        return self.success or self.error is not None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to a dictionary for serialization.
+
+        Returns:
+            Dictionary representation suitable for JSON serialization.
+        """
+        return {
+            "document_id": self.document_id,
+            "success": self.success,
+            "stage1_result": (
+                self.stage1_result.to_dict() if self.stage1_result else None
+            ),
+            "stage2_result": (
+                self.stage2_result.to_dict() if self.stage2_result else None
+            ),
+            "stage1_skipped_by_config": self.stage1_skipped_by_config,
+            "stage2_skipped_by_config": self.stage2_skipped_by_config,
+            "tags_updated": self.tags_updated,
+            "content_updated": self.content_updated,
+            "document_uploaded": self.document_uploaded,
             "error": self.error,
             "processing_time_seconds": self.processing_time_seconds,
             "created_at": self.created_at.isoformat(),
