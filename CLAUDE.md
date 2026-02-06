@@ -18,7 +18,8 @@ mise install                   # Install Python 3.12 + uv + jq
 uv sync --all-extras           # Install all dependencies including dev
 
 # Running the application
-uv run smart-ocr serve         # Start web server with workers
+mise run serve                 # Start web server with workers (via mise task)
+uv run smart-ocr serve         # Start web server with workers (directly)
 
 # Testing
 uv run pytest                              # Run all tests
