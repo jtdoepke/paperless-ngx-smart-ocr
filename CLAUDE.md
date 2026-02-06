@@ -88,9 +88,19 @@ Four exception families, each with a base class:
 - `PipelineError` → `PreprocessingError`, `LayoutDetectionError`, `OCRError`, `MarkerConversionError`
 - `JobError` → `JobNotFoundError`, `JobAlreadyCancelledError`, `JobQueueFullError`, `JobTimeoutError`
 
+### Web UI (htmx + Tailwind CSS)
+
+The UI uses Jinja2 templates with htmx for dynamic interactions and Tailwind CSS (CDN) for styling. Dark mode uses `darkMode: 'class'` with system preference detection and `localStorage` persistence.
+
+**View routes** (`web/routes/views.py`) serve full pages or htmx partials based on the `HX-Request` header. Templates extend `base.html` and use `{% include %}` for partials. Jinja2 globals (`version`, `theme_mode`) are injected in `_configure_templates()`.
+
+**htmx patterns**:
+- Document list pagination: `hx-get` targeting `#document-table` with `hx-push-url="true"`
+- Job auto-poll: `hx-get="/jobs/{id}" hx-trigger="every 2s"` on non-terminal job cards
+- Process/dry-run forms: `hx-post` returning partial templates into `#result-area`
+
 ### Not Yet Implemented
 
-- **htmx UI**: `web/templates/` and `web/static/` directories exist but are empty placeholders
 - **CLI commands**: Only `serve` works; `process`, `config`, `post-consume` are stubs
 - **Integration patterns**: Polling, webhook, and post-consume handlers not yet built
 - **Observability**: Prometheus metrics and OpenTelemetry tracing modules not yet implemented
