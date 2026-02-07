@@ -36,6 +36,8 @@ from paperless_ngx_smart_ocr.pipeline.preprocessing import analyze_document
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from paperless_ngx_smart_ocr.pipeline.pdf_utils import PdfProperties
+
 
 __all__ = [
     "Stage1Processor",
@@ -109,6 +111,8 @@ class Stage1Processor:
         output_path: Path,
         *,
         force: bool = False,
+        output_type: str | None = None,
+        color_conversion_strategy: str | None = None,
     ) -> Stage1Result:
         """Process a document through Stage 1 OCR.
 
@@ -120,6 +124,10 @@ class Stage1Processor:
             input_path: Path to input PDF file.
             output_path: Path for output PDF with OCR layer.
             force: If True, ignore born-digital handling and always OCR.
+            output_type: PDF output type for ocrmypdf (e.g. ``"pdfa-2"``).
+                Auto-detected from existing archive when ``None``.
+            color_conversion_strategy: Ghostscript color strategy
+                (e.g. ``"RGB"``). Auto-detected when ``None``.
 
         Returns:
             Stage1Result with processing outcome, timing, and any errors.
@@ -170,10 +178,15 @@ class Stage1Processor:
 
             # Step 3: Layout detection (if enabled)
             if self._layout_detector is not None:
-                layout_results = self._detect_layout_safe(input_path)
+                layout_results = self._detect_layout(input_path)
 
             # Step 4: Run OCRmyPDF
-            self._run_ocrmypdf(input_path, output_path)
+            self._run_ocrmypdf(
+                input_path,
+                output_path,
+                output_type=output_type,
+                color_conversion_strategy=color_conversion_strategy,
+            )
 
             processing_time = time.monotonic() - start_time
             self._logger.info(
@@ -273,44 +286,40 @@ class Stage1Processor:
 
         return False
 
-    def _detect_layout_safe(self, pdf_path: Path) -> list[LayoutResult] | None:
-        """Run layout detection with graceful error handling.
-
-        If layout detection fails, logs a warning and returns None
-        rather than failing the entire pipeline.
+    def _detect_layout(self, pdf_path: Path) -> list[LayoutResult]:
+        """Run layout detection.
 
         Args:
             pdf_path: Path to PDF file.
 
         Returns:
-            Layout detection results, or None if detection fails.
+            Layout detection results.
+
+        Raises:
+            LayoutDetectionError: If layout detection fails.
         """
         if self._layout_detector is None:
-            return None
+            msg = "Layout detector not configured"
+            raise LayoutDetectionError(msg)
 
         self._logger.debug("running_layout_detection", path=str(pdf_path))
-
-        try:
-            return self._layout_detector.detect_layout(pdf_path)
-        except LayoutDetectionError as exc:
-            # Log warning but continue without layout detection
-            self._logger.warning(
-                "layout_detection_failed",
-                path=str(pdf_path),
-                error=str(exc),
-            )
-            return None
+        return self._layout_detector.detect_layout(pdf_path)
 
     def _run_ocrmypdf(
         self,
         input_path: Path,
         output_path: Path,
+        *,
+        output_type: str | None = None,
+        color_conversion_strategy: str | None = None,
     ) -> None:
         """Run OCRmyPDF on the document.
 
         Args:
             input_path: Input PDF path.
             output_path: Output PDF path.
+            output_type: PDF output type (e.g. ``"pdfa-2"``).
+            color_conversion_strategy: Ghostscript color strategy.
 
         Raises:
             OCRError: If OCRmyPDF fails.
@@ -324,6 +333,8 @@ class Stage1Processor:
             deskew=ocr_config.deskew,
             clean=ocr_config.clean,
             rotate_pages=ocr_config.rotate_pages,
+            output_type=output_type,
+            color_conversion_strategy=color_conversion_strategy,
         )
 
         try:
@@ -331,17 +342,26 @@ class Stage1Processor:
             skip_text = self._config.born_digital_handling == BornDigitalHandling.SKIP
             force_ocr = self._config.born_digital_handling == BornDigitalHandling.FORCE
 
+            # Build kwargs for ocrmypdf.ocr
+            ocr_kwargs: dict[str, object] = {
+                "deskew": ocr_config.deskew,
+                "clean": ocr_config.clean,
+                "rotate_pages": ocr_config.rotate_pages,
+                "language": [ocr_config.language],
+                "skip_text": skip_text,
+                "force_ocr": force_ocr,
+            }
+            if output_type is not None:
+                ocr_kwargs["output_type"] = output_type
+            if color_conversion_strategy is not None:
+                ocr_kwargs["color_conversion_strategy"] = color_conversion_strategy
+
             # Run OCRmyPDF
             # Note: ocrmypdf.ocr returns an ExitCode enum
             exit_code = ocrmypdf.ocr(
                 str(input_path),
                 str(output_path),
-                deskew=ocr_config.deskew,
-                clean=ocr_config.clean,
-                rotate_pages=ocr_config.rotate_pages,
-                language=[ocr_config.language],
-                skip_text=skip_text,
-                force_ocr=force_ocr,
+                **ocr_kwargs,
             )
 
             # OCRmyPDF returns ExitCode enum, 0 is success
@@ -403,6 +423,7 @@ async def process_stage1(
     config: Stage1Config,
     gpu_mode: GPUMode = GPUMode.AUTO,
     force: bool = False,
+    pdf_properties: PdfProperties | None = None,
 ) -> Stage1Result:
     """Convenience function to process a document through Stage 1.
 
@@ -414,6 +435,9 @@ async def process_stage1(
         config: Stage 1 configuration from settings.
         gpu_mode: GPU mode for layout detection.
         force: If True, force OCR regardless of born-digital status.
+        pdf_properties: Detected archive PDF properties for format
+            matching. When provided, ``output_type`` and
+            ``color_conversion_strategy`` are passed to ocrmypdf.
 
     Returns:
         Stage1Result with processing outcome.
@@ -432,4 +456,12 @@ async def process_stage1(
         ```
     """
     processor = Stage1Processor(config=config, gpu_mode=gpu_mode)
-    return await processor.process(input_path, output_path, force=force)
+    return await processor.process(
+        input_path,
+        output_path,
+        force=force,
+        output_type=(pdf_properties.output_type if pdf_properties else None),
+        color_conversion_strategy=(
+            pdf_properties.color_conversion_strategy if pdf_properties else None
+        ),
+    )

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import typer
 
 from paperless_ngx_smart_ocr import __version__
@@ -73,17 +75,37 @@ def serve(
         "-c",
         help="Path to configuration file.",
     ),
+    reload: bool = typer.Option(  # noqa: FBT001
+        False,  # noqa: FBT003
+        "--reload",
+        "-r",
+        help="Enable auto-reload on file changes.",
+    ),
 ) -> None:
     """Start the web server with background workers."""
     import uvicorn
 
-    from paperless_ngx_smart_ocr.config import load_settings
-    from paperless_ngx_smart_ocr.web import create_app
+    if reload:
+        if config_file:
+            os.environ["SMARTOCR_CONFIG_FILE"] = config_file
 
-    settings = load_settings(config_file)
-    application = create_app(settings=settings)
+        uvicorn.run(
+            "paperless_ngx_smart_ocr.web:create_app",
+            factory=True,
+            host=host,
+            port=port,
+            reload=True,
+            reload_dirs=["src/paperless_ngx_smart_ocr"],
+            reload_includes=["*.html", "*.js", "*.css"],
+        )
+    else:
+        from paperless_ngx_smart_ocr.config import load_settings
+        from paperless_ngx_smart_ocr.web import create_app
 
-    uvicorn.run(application, host=host, port=port)
+        settings = load_settings(config_file)
+        application = create_app(settings=settings)
+
+        uvicorn.run(application, host=host, port=port)
 
 
 @app.command()

@@ -63,7 +63,6 @@ from paperless_ngx_smart_ocr.pipeline.models import (
     LayoutResult,
     PageAnalysis,
     PipelineResult,
-    RegionLabel,
     Stage1Result,
     Stage2Result,
 )
@@ -99,7 +98,6 @@ __all__ = [
     "PipelineOrchestrator",
     "PipelineResult",
     "PreprocessingError",
-    "RegionLabel",
     "Stage1Processor",
     "Stage1Result",
     "Stage2Processor",

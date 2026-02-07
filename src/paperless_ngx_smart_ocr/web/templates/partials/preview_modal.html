@@ -1,0 +1,176 @@
+<!-- Preview modal overlay -->
+<div id="preview-modal-backdrop"
+     class="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4"
+     onclick="if(event.target===this)window.closeModal()">
+  <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-[90vw] max-h-[90vh] flex flex-col">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+      <h2 class="text-lg font-semibold text-gray-900 dark:text-white truncate">
+        Preview: {{ document_title }}
+      </h2>
+      <button type="button" onclick="window.closeModal()"
+              class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-md">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Summary bar -->
+    <div class="px-4 py-2 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+      <div class="flex items-center space-x-4 text-xs">
+        <!-- Overall status -->
+        {% if result.success %}
+        <span class="flex items-center space-x-1">
+          <span class="w-2 h-2 rounded-full bg-green-500"></span>
+          <span class="text-green-700 dark:text-green-400">Success</span>
+        </span>
+        {% else %}
+        <span class="flex items-center space-x-1">
+          <span class="w-2 h-2 rounded-full bg-red-500"></span>
+          <span class="text-red-700 dark:text-red-400">Failed</span>
+        </span>
+        {% endif %}
+
+        <span class="text-gray-300 dark:text-gray-600">|</span>
+
+        <!-- Stage 1 (OCR) -->
+        <span class="text-gray-500 dark:text-gray-400">Stage 1 (OCR):</span>
+        {% if result.stage1_skipped_by_config %}
+        <span class="text-gray-400 dark:text-gray-500">Disabled</span>
+        {% elif result.stage1_result and result.stage1_result.success %}
+        <span class="text-green-600 dark:text-green-400">OK</span>
+        {% elif result.stage1_result and result.stage1_result.skipped %}
+        <span class="text-gray-400 dark:text-gray-500">Skipped</span>
+        {% elif result.stage1_result %}
+        <span class="text-red-600 dark:text-red-400">Failed</span>
+        {% else %}
+        <span class="text-gray-400 dark:text-gray-500">N/A</span>
+        {% endif %}
+
+        <span class="text-gray-300 dark:text-gray-600">|</span>
+
+        <!-- Stage 2 (Markdown) -->
+        <span class="text-gray-500 dark:text-gray-400">Stage 2 (Markdown):</span>
+        {% if result.stage2_skipped_by_config %}
+        <span class="text-gray-400 dark:text-gray-500">Disabled</span>
+        {% elif result.stage2_result and result.stage2_result.success %}
+        <span class="text-green-600 dark:text-green-400">OK</span>
+        {% elif result.stage2_result %}
+        <span class="text-red-600 dark:text-red-400">Failed</span>
+        {% else %}
+        <span class="text-gray-400 dark:text-gray-500">N/A</span>
+        {% endif %}
+
+        <!-- LLM indicator -->
+        <span class="text-gray-500 dark:text-gray-400">LLM:</span>
+        {% if result.stage2_result and result.stage2_result.llm_used %}
+        <span class="text-blue-600 dark:text-blue-400">On</span>
+        {% else %}
+        <span class="text-gray-400 dark:text-gray-500">Off</span>
+        {% endif %}
+
+        {% if result.processing_time_seconds is not none %}
+        <span class="text-gray-300 dark:text-gray-600">|</span>
+        <span class="text-gray-500 dark:text-gray-400">{{ "%.1f" | format(result.processing_time_seconds) }}s</span>
+        {% endif %}
+      </div>
+
+      {% if result.error %}
+      <div class="mt-1 text-xs text-red-600 dark:text-red-400">{{ result.error }}</div>
+      {% endif %}
+      {% if result.stage1_result and result.stage1_result.error %}
+      <div class="mt-1 text-xs text-red-600 dark:text-red-400">Stage 1: {{ result.stage1_result.error }}</div>
+      {% endif %}
+      {% if result.stage2_result and result.stage2_result.error %}
+      <div class="mt-1 text-xs text-red-600 dark:text-red-400">Stage 2: {{ result.stage2_result.error }}</div>
+      {% endif %}
+    </div>
+
+    <!-- Body: two-column layout -->
+    <div class="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-2 gap-0">
+      <!-- Left: PDF preview -->
+      <div class="border-r border-gray-200 dark:border-gray-700 flex flex-col min-h-0">
+        <div class="px-3 py-2 text-xs font-medium text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-700">
+          {% if has_ocr_pdf %}OCR'd PDF{% else %}Original PDF{% endif %}
+        </div>
+        <iframe
+          src="{% if has_ocr_pdf %}/documents/{{ document_id }}/preview-pdf/{{ preview_id }}{% else %}/documents/{{ document_id }}/pdf{% endif %}"
+          class="flex-1 w-full"
+          style="min-height: 400px;"
+          title="PDF Preview"></iframe>
+      </div>
+
+      <!-- Right: Markdown preview -->
+      <div class="flex flex-col min-h-0">
+        <div class="px-3 py-2 flex items-center justify-between border-b border-gray-100 dark:border-gray-700">
+          <span class="text-xs font-medium text-gray-500 dark:text-gray-400">Markdown</span>
+          {% if markdown %}
+          <div class="flex space-x-1">
+            <button type="button" data-md-toggle="raw"
+                    class="px-2 py-0.5 text-xs rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+              Raw
+            </button>
+            <button type="button" data-md-toggle="rendered"
+                    class="px-2 py-0.5 text-xs rounded text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">
+              Rendered
+            </button>
+          </div>
+          {% endif %}
+        </div>
+        <div class="flex-1 overflow-y-auto p-3">
+          {% if markdown %}
+          <div id="md-rendered" class="hidden prose prose-sm dark:prose-invert max-w-none">
+            {{ markdown_html | safe }}
+          </div>
+          <pre id="md-raw" class="text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words font-mono">{{ markdown }}</pre>
+          {% else %}
+          <p class="text-sm text-gray-400 dark:text-gray-500 italic">No markdown content produced.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer: apply actions -->
+    <div class="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end">
+      <div class="flex items-center space-x-4">
+        {% if has_ocr_pdf and archive_dir_configured %}
+        <label class="flex items-center space-x-2 text-sm">
+          <input type="checkbox" name="replace_pdf" value="true" checked
+                 class="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500">
+          <span class="text-gray-700 dark:text-gray-300">Replace PDF</span>
+        </label>
+        {% endif %}
+        {% if markdown %}
+        <label class="flex items-center space-x-2 text-sm">
+          <input type="checkbox" name="replace_content" value="true" checked
+                 class="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500">
+          <span class="text-gray-700 dark:text-gray-300">Replace Content</span>
+        </label>
+        {% endif %}
+        <button type="button" onclick="window.closeModal()"
+                class="px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 rounded-md">
+          Cancel
+        </button>
+        {% if result.success and (markdown or (has_ocr_pdf and archive_dir_configured)) %}
+        <button type="button"
+                id="apply-btn"
+                hx-post="/documents/{{ document_id }}/apply/{{ preview_id }}"
+                hx-target="#modal-container"
+                hx-swap="innerHTML"
+                hx-include="[name='replace_pdf'],[name='replace_content']"
+                hx-indicator="#apply-spinner"
+                class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <svg id="apply-spinner" class="htmx-indicator animate-spin -ml-0.5 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+          </svg>
+          Apply
+        </button>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+</div>

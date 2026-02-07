@@ -395,22 +395,6 @@ class TestProcessDocument:
         assert submit_kwargs["name"] == "Process document 7"
         assert submit_kwargs["document_id"] == 7
 
-    def test_force_param(self, test_app: FastAPI, client: TestClient) -> None:
-        """force=true is passed through to make_job_coroutine."""
-        mock_job = _make_mock_job()
-        test_app.state.job_queue.submit = AsyncMock(
-            return_value=mock_job,
-        )
-
-        with patch(
-            "paperless_ngx_smart_ocr.web.routes.documents.make_job_coroutine",
-        ) as mock_make:
-            client.post("/api/documents/1/process?force=true")
-
-        mock_make.assert_called_once()
-        call_kwargs = mock_make.call_args.kwargs
-        assert call_kwargs["force"] is True
-
 
 # ---------------------------------------------------------------------------
 # TestDryRunDocument
@@ -470,8 +454,8 @@ class TestDryRunDocument:
         call_kwargs = mock_cls.return_value.process.call_args.kwargs
         assert call_kwargs["dry_run"] is True
 
-    def test_force_param(self, test_app: FastAPI, client: TestClient) -> None:
-        """force=true is passed through."""
+    def test_force_always_on(self, test_app: FastAPI, client: TestClient) -> None:
+        """Force is always enabled (hardcoded True)."""
         mock_result = _make_mock_pipeline_result()
 
         with patch(
@@ -480,7 +464,7 @@ class TestDryRunDocument:
             mock_cls.return_value.process = AsyncMock(
                 return_value=mock_result,
             )
-            client.post("/api/documents/1/dry-run?force=true")
+            client.post("/api/documents/1/dry-run")
 
         call_kwargs = mock_cls.return_value.process.call_args.kwargs
         assert call_kwargs["force"] is True

@@ -24,14 +24,45 @@
     <!-- Health card -->
     <div class="p-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
       <h2 class="text-sm font-medium text-gray-500 dark:text-gray-400">Status</h2>
-      <div class="mt-2 space-y-1">
+      <div class="mt-2 space-y-1.5">
+        <!-- Paperless-ngx API -->
         <div class="flex items-center space-x-2">
           {% if ready %}
-          <span class="w-2 h-2 rounded-full bg-green-500"></span>
+          <span class="w-2 h-2 rounded-full bg-green-500 shrink-0"></span>
           <span class="text-sm text-gray-700 dark:text-gray-300">Connected to paperless-ngx</span>
           {% else %}
-          <span class="w-2 h-2 rounded-full bg-red-500"></span>
+          <span class="w-2 h-2 rounded-full bg-red-500 shrink-0"></span>
           <span class="text-sm text-gray-700 dark:text-gray-300">Cannot reach paperless-ngx</span>
+          {% endif %}
+        </div>
+        <!-- Archive directory -->
+        <div class="flex items-center space-x-2">
+          {% if archive_status.configured %}
+            {% if archive_status.ok %}
+          <span class="w-2 h-2 rounded-full bg-green-500 shrink-0"></span>
+          <span class="text-sm text-gray-700 dark:text-gray-300">Archive directory readable</span>
+            {% else %}
+          <span class="w-2 h-2 rounded-full bg-red-500 shrink-0"></span>
+          <span class="text-sm text-gray-700 dark:text-gray-300" title="{{ archive_status.message }}">Archive directory error</span>
+            {% endif %}
+          {% else %}
+          <span class="w-2 h-2 rounded-full bg-gray-400 shrink-0"></span>
+          <span class="text-sm text-gray-500 dark:text-gray-500">Archive directory not configured</span>
+          {% endif %}
+        </div>
+        <!-- PostgreSQL database -->
+        <div class="flex items-center space-x-2">
+          {% if db_status.configured %}
+            {% if db_status.ok %}
+          <span class="w-2 h-2 rounded-full bg-green-500 shrink-0"></span>
+          <span class="text-sm text-gray-700 dark:text-gray-300">Connected to database</span>
+            {% else %}
+          <span class="w-2 h-2 rounded-full bg-red-500 shrink-0"></span>
+          <span class="text-sm text-gray-700 dark:text-gray-300" title="{{ db_status.message }}">Database connection error</span>
+            {% endif %}
+          {% else %}
+          <span class="w-2 h-2 rounded-full bg-gray-400 shrink-0"></span>
+          <span class="text-sm text-gray-500 dark:text-gray-500">Database not configured</span>
           {% endif %}
         </div>
       </div>

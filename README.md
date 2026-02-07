@@ -30,10 +30,10 @@ A service that enhances [paperless-ngx](https://github.com/paperless-ngx/paperle
 | Testing | pytest, pytest-cov, 80%+ coverage |
 | Web Framework | FastAPI + htmx + Tailwind CSS |
 | Stage 1 OCR | OCRmyPDF + Surya (layout detection) |
-| Stage 2 Markdown | Marker (LLM configurable, off by default) |
+| Stage 2 Markdown | Marker (LLM via Ollama, configurable, off by default) |
 | Storage | YAML configs, structured logs (no database) |
 | Job Queue | Background queue + sync mode for dry runs |
-| Auth | Paperless-ngx API tokens |
+| Auth | Per-user cookie-based auth with paperless-ngx API tokens |
 | Deployment | Docker (ghcr.io) + pip install + Proxmox guide |
 | License | MIT |
 
@@ -180,6 +180,7 @@ paperless-ngx-smart-ocr/
 │       │
 │       ├── config/
 │       │   ├── __init__.py
+│       │   ├── exceptions.py        # Configuration errors
 │       │   ├── settings.py          # Pydantic settings (env + YAML)
 │       │   └── schema.py            # Config validation schemas
 │       │
@@ -187,128 +188,105 @@ paperless-ngx-smart-ocr/
 │       │   ├── __init__.py
 │       │   ├── client.py            # Paperless-ngx API client
 │       │   ├── models.py            # Document, Tag, etc. models
-│       │   └── exceptions.py
+│       │   └── exceptions.py        # Paperless error hierarchy
 │       │
 │       ├── pipeline/
 │       │   ├── __init__.py
+│       │   ├── exceptions.py        # Pipeline error hierarchy
+│       │   ├── models.py            # Result dataclasses
 │       │   ├── orchestrator.py      # Pipeline coordination
 │       │   ├── stage1_ocr.py        # OCRmyPDF + Surya
 │       │   ├── stage2_markdown.py   # Marker conversion
 │       │   ├── layout.py            # Surya layout detection
-│       │   └── preprocessing.py     # Document analysis
+│       │   ├── preprocessing.py     # Document analysis
+│       │   ├── llm_services.py      # LLM provider integration
+│       │   └── pdf_utils.py         # PDF manipulation utilities
 │       │
 │       ├── workers/
 │       │   ├── __init__.py
-│       │   ├── queue.py             # Background job queue
-│       │   ├── polling.py           # Polling integration
-│       │   ├── webhook.py           # Webhook handler
-│       │   └── post_consume.py      # Post-consume script mode
+│       │   ├── exceptions.py        # Job error hierarchy
+│       │   ├── models.py            # Job models
+│       │   └── queue.py             # Background job queue
 │       │
 │       ├── web/
 │       │   ├── __init__.py
-│       │   ├── app.py               # FastAPI application
+│       │   ├── app.py               # FastAPI application factory
+│       │   ├── auth.py              # Cookie-based authentication
+│       │   ├── archive.py           # PDF replacement via filesystem
+│       │   ├── preview_store.py     # Server-side preview cache
 │       │   ├── routes/
 │       │   │   ├── __init__.py
-│       │   │   ├── documents.py     # Document processing endpoints
+│       │   │   ├── auth.py          # Login/logout endpoints
+│       │   │   ├── documents.py     # Document API endpoints
 │       │   │   ├── jobs.py          # Job status endpoints
-│       │   │   ├── settings.py      # Settings endpoints
-│       │   │   └── health.py        # Health check endpoints
+│       │   │   ├── health.py        # Health check endpoints
+│       │   │   └── views.py         # htmx view routes
 │       │   ├── templates/           # Jinja2 templates for htmx
 │       │   │   ├── base.html
 │       │   │   ├── index.html
+│       │   │   ├── login.html
 │       │   │   ├── documents/
 │       │   │   │   ├── list.html
-│       │   │   │   ├── detail.html
-│       │   │   │   └── process.html
+│       │   │   │   └── detail.html
 │       │   │   ├── jobs/
-│       │   │   │   └── status.html
+│       │   │   │   ├── list.html
+│       │   │   │   └── detail.html
 │       │   │   └── partials/        # htmx partial templates
+│       │   │       ├── apply_result.html
+│       │   │       ├── bulk_review_row.html
+│       │   │       ├── bulk_review_table.html
+│       │   │       ├── document_row.html
+│       │   │       ├── document_table.html
+│       │   │       ├── error.html
+│       │   │       ├── job_card.html
+│       │   │       ├── job_list.html
+│       │   │       └── preview_modal.html
 │       │   └── static/
 │       │       ├── css/
 │       │       │   └── app.css      # Tailwind output
 │       │       └── js/
-│       │           └── app.js       # Minimal JS (htmx extensions)
+│       │           └── app.js       # Dark mode, modals, bulk selection
 │       │
 │       ├── observability/
 │       │   ├── __init__.py
-│       │   ├── logging.py           # Structured JSON logging
-│       │   ├── metrics.py           # Prometheus metrics
-│       │   └── tracing.py           # OpenTelemetry setup
+│       │   └── logging.py           # Structured logfmt logging
 │       │
 │       └── cli/
-│           ├── __init__.py
-│           └── commands.py          # CLI commands (typer)
+│           └── __init__.py          # CLI commands (typer)
 │
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py                  # Fixtures, test config
 │   ├── fixtures/
-│   │   └── pdfs/                    # Sample PDF test documents
-│   │       ├── scanned_single_column.pdf
-│   │       ├── scanned_multi_column.pdf
-│   │       ├── born_digital.pdf
-│   │       ├── tables_and_figures.pdf
-│   │       └── noisy_scan.pdf
+│   │   └── pdfs/                    # Sample PDF test documents (placeholder)
 │   ├── unit/
+│   │   ├── test_archive.py
 │   │   ├── test_config.py
+│   │   ├── test_logging.py
+│   │   ├── test_orchestrator.py
 │   │   ├── test_paperless_client.py
 │   │   ├── test_pipeline.py
-│   │   └── test_layout.py
-│   └── integration/
-│       ├── test_stage1_ocr.py
-│       ├── test_stage2_markdown.py
-│       └── test_full_pipeline.py
+│   │   ├── test_preview_store.py
+│   │   ├── test_queue.py
+│   │   ├── test_web_app.py
+│   │   ├── test_web_auth.py
+│   │   ├── test_web_documents.py
+│   │   ├── test_web_jobs.py
+│   │   └── test_web_views.py
+│   └── integration/                 # Not yet implemented
 │
-├── docs/                            # MkDocs documentation source
-│   ├── index.md
-│   ├── getting-started/
-│   │   ├── installation.md
-│   │   ├── configuration.md
-│   │   └── quick-start.md
-│   ├── user-guide/
-│   │   ├── web-ui.md
-│   │   ├── processing-documents.md
-│   │   ├── tag-workflow.md
-│   │   └── troubleshooting.md
-│   ├── integration/
-│   │   ├── polling.md
-│   │   ├── webhooks.md
-│   │   └── post-consume.md
-│   ├── deployment/
-│   │   ├── docker.md
-│   │   ├── proxmox.md
-│   │   └── pip-install.md
-│   ├── development/
-│   │   ├── contributing.md
-│   │   ├── architecture.md
-│   │   └── testing.md
-│   └── reference/
-│       ├── configuration.md
-│       ├── api.md
-│       └── cli.md
-│
-├── docker/
-│   ├── Dockerfile
-│   ├── Dockerfile.dev
-│   └── docker-compose.yml           # For local development
-│
-├── .github/
-│   ├── workflows/
-│   │   ├── ci.yml                   # Lint, test, coverage
-│   │   ├── release.yml              # Build & publish on tag
-│   │   └── docs.yml                 # Deploy docs to GitHub Pages
-│   ├── dependabot.yml
-│   └── ISSUE_TEMPLATE/
+├── docs/                            # Not yet implemented
+├── docker/                          # Not yet implemented
 │
 ├── pyproject.toml                   # Project config (uv, ruff, mypy, pytest)
 ├── uv.lock                          # Lockfile
 ├── .pre-commit-config.yaml
 ├── .python-version                  # 3.12
-├── mkdocs.yml                       # MkDocs configuration
+├── .env.example                     # Example environment variables
 ├── tailwind.config.js               # Tailwind configuration
 ├── LICENSE                          # MIT
 ├── README.md
-├── CHANGELOG.md
+├── CLAUDE.md                        # Claude Code project instructions
 └── config.example.yaml              # Example configuration file
 ```
 
@@ -381,11 +359,14 @@ pipeline:
     # Marker options
     marker:
       use_llm: false  # Enable LLM assistance (may introduce hallucinations)
-      # If use_llm is true, configure the LLM
+      # If use_llm is true, configure the LLM provider.
+      # Default provider is Ollama (local). Requires Ollama running
+      # locally (https://ollama.com) with the configured model pulled:
+      #   ollama pull granite3.2-vision:2b
       llm:
-        provider: "openai"  # or "anthropic", "ollama"
-        model: "gpt-4o-mini"
-        api_key: "${OPENAI_API_KEY}"
+        provider: "ollama"  # or "openai", "anthropic"
+        model: "granite3.2-vision:2b"
+        # api_key: "${OPENAI_API_KEY}"  # Only needed for openai/anthropic
 
 # Integration mode
 integration:
@@ -485,21 +466,39 @@ SMARTOCR_OBSERVABILITY_METRICS_ENABLED=true
 
 ## API Endpoints
 
+### REST API (`/api` prefix)
+
 ```
-GET  /                           # Web UI home
-GET  /documents                  # Document list view
-GET  /documents/{id}             # Document detail view
-POST /documents/{id}/process     # Trigger processing
-POST /documents/{id}/dry-run     # Dry run (preview)
+GET  /api/health                              # Liveness probe
+GET  /api/ready                               # Readiness probe
+GET  /api/documents                           # List documents (paginated, filtered)
+GET  /api/documents/{id}                      # Get single document
+POST /api/documents/{id}/process              # Submit for background processing (202)
+POST /api/documents/{id}/dry-run              # Synchronous preview (no side effects)
+GET  /api/jobs                                # List jobs (filterable by status)
+GET  /api/jobs/{id}                           # Get job status
+POST /api/jobs/{id}/cancel                    # Cancel pending/running job
+```
 
-GET  /jobs                       # Active jobs list
-GET  /jobs/{id}                  # Job status
+### Web UI (htmx views)
 
-GET  /api/health                 # Health check
-GET  /api/ready                  # Readiness check
-GET  /metrics                    # Prometheus metrics
-
-POST /api/webhook                # Paperless webhook receiver
+```
+GET  /login                                   # Login page
+POST /login                                   # Submit token
+POST /logout                                  # Clear auth cookie
+GET  /                                        # Dashboard
+GET  /documents                               # Document list with filtering
+GET  /documents/{id}                          # Document detail with PDF viewer
+GET  /documents/{id}/pdf                      # Proxy PDF from paperless-ngx
+POST /documents/{id}/preview                  # Run dry-run, return preview modal
+POST /documents/{id}/apply/{preview_id}       # Apply preview results to paperless
+GET  /documents/{id}/preview-pdf/{preview_id} # Serve preview OCR'd PDF
+POST /documents/bulk-preview                  # Bulk dry-run for selected documents
+GET  /documents/bulk-review/{batch_id}        # Poll batch preview status
+POST /documents/bulk-apply/{batch_id}         # Apply all successful batch previews
+GET  /jobs                                    # Jobs list view
+GET  /jobs/{id}                               # Job detail view
+POST /jobs/{id}/cancel                        # Cancel job (htmx)
 ```
 
 ---
@@ -519,16 +518,17 @@ POST /api/webhook                # Paperless webhook receiver
 - `marker-pdf` - Markdown conversion
 - `pymupdf` (fitz) - PDF manipulation
 
+### System Dependencies
+- `tesseract` - OCR engine (required by ocrmypdf)
+- `ghostscript` - PDF/A conversion (required by ocrmypdf)
+- `unpaper` - Page cleaning/deskewing (required when `ocrmypdf.clean: true`, the default)
+
 ### Web UI
 - `jinja2` - Template engine
 - `python-multipart` - Form handling
 
 ### Observability
 - `structlog` - Structured logging
-- `prometheus-client` - Metrics
-- `opentelemetry-api` - Tracing
-- `opentelemetry-sdk`
-- `opentelemetry-exporter-otlp`
 
 ### CLI
 - `typer` - CLI framework
@@ -551,7 +551,7 @@ POST /api/webhook                # Paperless webhook receiver
 
 Completed: Project initialized with uv, pyproject.toml configured with all dependencies and strict tooling (ruff, mypy, pytest), pre-commit hooks, .gitignore, MIT LICENSE, and full directory structure.
 
-### Phase 2: Core Infrastructure
+### Phase 2: Core Infrastructure ✓
 
 - [x] **Configuration module** (`src/paperless_ngx_smart_ocr/config/`)
   - [x] Pydantic settings with YAML + env support
@@ -627,7 +627,7 @@ Completed: Project initialized with uv, pyproject.toml configured with all depen
   - [x] Get job status by ID
   - [x] List active/completed jobs
 
-### Phase 6: Web UI
+### Phase 6: Web UI ✓
 
 - [x] **FastAPI application** (`src/paperless_ngx_smart_ocr/web/app.py`)
   - [x] Application factory pattern
@@ -635,27 +635,46 @@ Completed: Project initialized with uv, pyproject.toml configured with all depen
   - [x] Exception handlers
   - [x] Static file serving
   - [x] Lifespan management (startup/shutdown)
+- [x] **Authentication** (`src/paperless_ngx_smart_ocr/web/auth.py`)
+  - [x] Per-user cookie-based auth with paperless-ngx API tokens
+  - [x] Login/logout routes (`routes/auth.py`)
+  - [x] Token validation against paperless-ngx API
+  - [x] Per-request `PaperlessClient` from user cookie
 - [x] **API routes** (`src/paperless_ngx_smart_ocr/web/routes/`)
   - [x] Document listing with filtering (`documents.py`)
-  - [x] Document processing trigger
-  - [x] Dry run endpoint
+  - [x] Document processing trigger (returns 202 with job)
+  - [x] Dry run endpoint (synchronous preview)
   - [x] Job status endpoints (`jobs.py`)
-  - [x] Health check endpoints (`health.py`)
+  - [x] Health/readiness endpoints (`health.py`)
+- [x] **Preview/apply workflow**
+  - [x] Server-side preview cache (`preview_store.py`)
+  - [x] Preview modal with Markdown diff and OCR'd PDF
+  - [x] Selective apply (choose PDF replacement, content update, or both)
+  - [x] PDF replacement via filesystem (`archive.py`)
+- [x] **Bulk operations**
+  - [x] Bulk document selection on list page
+  - [x] Bulk preview with batch tracking
+  - [x] Bulk review table with per-document status polling
+  - [x] Bulk apply for all successful previews
 - [x] **htmx templates** (`src/paperless_ngx_smart_ocr/web/templates/`)
   - [x] Base layout with Tailwind CSS
   - [x] Dark mode support with system preference detection
   - [x] Document list view with filtering (tags, correspondent, document type, date ranges)
-  - [x] Document detail view
-  - [x] Processing form (stage selection, options override)
-  - [x] Job progress display
-  - [x] Partial templates for htmx updates
+  - [x] Document detail view with embedded PDF viewer and resolved metadata
+  - [x] Fixed bottom action bar for processing controls
+  - [x] Job list and detail views
+  - [x] Partial templates for htmx updates (9 partials)
 - [x] **Tailwind CSS setup**
   - [x] tailwind.config.js configuration
   - [x] CDN setup (standalone CLI migration path documented)
   - [x] Dark mode class configuration
 
-### Phase 7: Observability
+### Phase 7: Observability (Partial)
 
+- [x] **Structured logging** (`src/paperless_ngx_smart_ocr/observability/logging.py`)
+  - [x] Structured logfmt-style logging with structlog
+  - [x] Configurable log levels (--verbose/-V, --quiet/-q CLI flags)
+  - [x] Request ID tracking via contextvars
 - [ ] **Prometheus metrics** (`src/paperless_ngx_smart_ocr/observability/metrics.py`)
   - [ ] Documents processed counter (by stage, status)
   - [ ] Processing duration histogram
@@ -669,13 +688,15 @@ Completed: Project initialized with uv, pyproject.toml configured with all depen
   - [ ] Attribute enrichment (document ID, stage, etc.)
   - [ ] OTLP exporter configuration
 
-### Phase 8: CLI
+### Phase 8: CLI (Partial)
 
-- [ ] **Typer CLI** (`src/paperless_ngx_smart_ocr/cli/commands.py`)
-  - [ ] `serve` command - Start web server with workers
-  - [ ] `process` command - Process single document by ID
-  - [ ] `config` command - Validate configuration file
-  - [ ] `post-consume` command - Post-consume script mode
+- [ ] **Typer CLI** (`src/paperless_ngx_smart_ocr/cli/__init__.py`)
+  - [x] `serve` command - Start web server with workers
+  - [x] Logging flags (--verbose/-V, --quiet/-q)
+  - [x] Version flag (--version/-v)
+  - [ ] `process` command - Process single document by ID (stub)
+  - [ ] `config` command - Validate configuration file (stub)
+  - [ ] `post-consume` command - Post-consume script mode (stub)
   - [ ] Rich output formatting
 
 ### Phase 9: Docker
@@ -708,23 +729,32 @@ Completed: Project initialized with uv, pyproject.toml configured with all depen
   - [ ] Development guide (contributing, architecture, testing)
   - [ ] Reference (configuration options, API, CLI)
 
-### Phase 11: Testing
+### Phase 11: Testing (Partial)
 
 - [ ] **Test fixtures** (`tests/fixtures/`)
   - [ ] Sample PDF files (scanned single-column, multi-column, born-digital, tables, noisy)
-  - [ ] Mock paperless-ngx API responses
-  - [ ] Configuration fixtures
-- [ ] **Unit tests** (`tests/unit/`)
-  - [ ] Configuration parsing and validation
-  - [ ] Paperless client methods
-  - [ ] Pipeline components (layout, preprocessing)
-  - [ ] Job queue operations
+  - [x] Mock paperless-ngx API responses (via respx in unit tests)
+  - [x] Configuration fixtures (in conftest.py)
+- [x] **Unit tests** (`tests/unit/`) — 13 test files
+  - [x] Configuration parsing and validation (`test_config.py`)
+  - [x] Paperless client methods (`test_paperless_client.py`)
+  - [x] Pipeline components (`test_pipeline.py`)
+  - [x] Pipeline orchestrator (`test_orchestrator.py`)
+  - [x] Job queue operations (`test_queue.py`)
+  - [x] Structured logging (`test_logging.py`)
+  - [x] Web application factory (`test_web_app.py`)
+  - [x] Authentication (`test_web_auth.py`)
+  - [x] Document routes (`test_web_documents.py`)
+  - [x] Job routes (`test_web_jobs.py`)
+  - [x] View routes (`test_web_views.py`)
+  - [x] Archive module (`test_archive.py`)
+  - [x] Preview store (`test_preview_store.py`)
 - [ ] **Integration tests** (`tests/integration/`)
   - [ ] Full Stage 1 pipeline with sample PDFs
   - [ ] Full Stage 2 pipeline with sample PDFs
   - [ ] End-to-end processing flow
-- [ ] **Coverage configuration**
-  - [ ] 80% coverage target
+- [x] **Coverage configuration**
+  - [x] 80% coverage target (in pyproject.toml)
   - [ ] Coverage reporting in CI
   - [ ] Coverage badge in README
 
@@ -769,7 +799,7 @@ Completed: Project initialized with uv, pyproject.toml configured with all depen
 
 ### Manual Testing
 
-1. Start service with `uv run smart-ocr serve`
+1. Start service with `mise run dev` (or `uv run smart-ocr serve`)
 2. Open web UI at http://localhost:8080
 3. Verify paperless-ngx connection (health indicator)
 4. Select a scanned PDF document

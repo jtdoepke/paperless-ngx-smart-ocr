@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from paperless_ngx_smart_ocr.config import Settings
     from paperless_ngx_smart_ocr.paperless import PaperlessClient
     from paperless_ngx_smart_ocr.pipeline.models import PipelineResult
+    from paperless_ngx_smart_ocr.web.preview_store import PreviewStore
 
 
 __all__ = [
@@ -30,6 +31,7 @@ __all__ = [
     "AuthMiddleware",
     "get_user_client",
     "make_job_coroutine",
+    "make_preview_job_coroutine",
     "validate_token",
 ]
 
@@ -170,7 +172,6 @@ def make_job_coroutine(
     settings: Settings,
     base_url: str,
     token: str,
-    force: bool = False,
 ) -> Coroutine[Any, Any, PipelineResult]:
     """Create a coroutine that processes a document with its own client.
 
@@ -183,7 +184,6 @@ def make_job_coroutine(
         settings: Application settings.
         base_url: Paperless-ngx base URL.
         token: User's API token.
-        force: Force processing regardless of born-digital status.
 
     Returns:
         A coroutine that, when awaited, processes the document.
@@ -205,7 +205,88 @@ def make_job_coroutine(
                 document_id,
                 settings=settings,
                 client=client,
-                force=force,
+                force=True,
+            )
+
+    return _run()
+
+
+def make_preview_job_coroutine(
+    document_id: int,
+    *,
+    settings: Settings,
+    base_url: str,
+    token: str,
+    preview_store: PreviewStore,
+) -> Coroutine[Any, Any, PipelineResult]:
+    """Create a coroutine that dry-runs a document and stores preview.
+
+    Like ``make_job_coroutine`` but runs in ``dry_run=True`` mode and
+    uses ``before_cleanup`` to capture OCR'd PDF bytes and markdown
+    into the preview store.
+
+    Args:
+        document_id: The paperless-ngx document ID.
+        settings: Application settings.
+        base_url: Paperless-ngx base URL.
+        token: User's API token.
+        preview_store: The preview store for caching results.
+
+    Returns:
+        A coroutine that, when awaited, dry-runs and stores preview.
+    """
+
+    async def _run() -> PipelineResult:
+        from paperless_ngx_smart_ocr.paperless import (
+            PaperlessClient,
+        )
+        from paperless_ngx_smart_ocr.pipeline.orchestrator import (
+            process_document,
+        )
+        from paperless_ngx_smart_ocr.web.preview_store import (
+            PreviewEntry,
+        )
+
+        async def _capture(result: PipelineResult) -> None:
+            markdown = ""
+            ocr_pdf_bytes: bytes | None = None
+
+            if (
+                result.stage2_result
+                and result.stage2_result.success
+                and result.stage2_result.markdown
+            ):
+                markdown = result.stage2_result.markdown
+
+            if (
+                result.stage1_result
+                and result.stage1_result.success
+                and result.stage1_result.output_path
+                and result.stage1_result.output_path.exists()
+            ):
+                ocr_pdf_bytes = result.stage1_result.output_path.read_bytes()
+
+            pid = preview_store.generate_id()
+            entry = PreviewEntry(
+                preview_id=pid,
+                document_id=document_id,
+                pipeline_result=result,
+                markdown=markdown,
+                ocr_pdf_bytes=ocr_pdf_bytes,
+            )
+            await preview_store.store(entry)
+
+        async with PaperlessClient(
+            base_url=base_url,
+            token=token,
+        ) as client:
+            return await process_document(
+                document_id,
+                settings=settings,
+                client=client,
+                force=True,
+                dry_run=True,
+                before_cleanup=_capture,
             )
 
     return _run()

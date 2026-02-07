@@ -81,6 +81,73 @@
 })();
 
 /**
+ * Modal management for preview and apply flows.
+ *
+ * Provides window.closeModal() and handles escape key, backdrop click,
+ * body scroll lock, and markdown raw/rendered toggle.
+ */
+(function () {
+  "use strict";
+
+  /** Close the modal by clearing #modal-container. */
+  window.closeModal = function () {
+    var container = document.getElementById("modal-container");
+    if (container) container.innerHTML = "";
+    document.body.classList.remove("overflow-hidden");
+  };
+
+  // Escape key closes modal
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") {
+      var container = document.getElementById("modal-container");
+      if (container && container.innerHTML.trim()) {
+        window.closeModal();
+      }
+    }
+  });
+
+  // Lock body scroll when modal content appears
+  document.addEventListener("htmx:afterSwap", function (e) {
+    if (e.detail.target && e.detail.target.id === "modal-container") {
+      if (e.detail.target.innerHTML.trim()) {
+        document.body.classList.add("overflow-hidden");
+      }
+    }
+  });
+
+  // Markdown raw/rendered toggle via delegation
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-md-toggle]");
+    if (!btn) return;
+
+    var mode = btn.dataset.mdToggle;
+    var rendered = document.getElementById("md-rendered");
+    var raw = document.getElementById("md-raw");
+    if (!rendered || !raw) return;
+
+    if (mode === "raw") {
+      rendered.classList.add("hidden");
+      raw.classList.remove("hidden");
+    } else {
+      rendered.classList.remove("hidden");
+      raw.classList.add("hidden");
+    }
+
+    // Update toggle button styles
+    var buttons = btn.parentElement.querySelectorAll("[data-md-toggle]");
+    buttons.forEach(function (b) {
+      if (b.dataset.mdToggle === mode) {
+        b.className =
+          "px-2 py-0.5 text-xs rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400";
+      } else {
+        b.className =
+          "px-2 py-0.5 text-xs rounded text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700";
+      }
+    });
+  });
+})();
+
+/**
  * Bulk document selection and processing.
  *
  * Manages checkbox state across htmx table swaps and provides
@@ -244,10 +311,9 @@
       return;
     }
 
-    // Bulk action bar: process
+    // Bulk action bar: process (opens preview review modal)
     if (target.id === "bulk-process-btn") {
-      var force = document.getElementById("bulk-force");
-      var values = { force: force && force.checked ? "true" : "" };
+      var values = {};
 
       if (selectAllMatchingMode) {
         values.filter_query = allMatchingFilterQs;
@@ -255,8 +321,8 @@
         values.document_ids = Array.from(selectedIds).join(",");
       }
 
-      htmx.ajax("POST", "/documents/bulk-process", {
-        target: "#bulk-result-area",
+      htmx.ajax("POST", "/documents/bulk-preview", {
+        target: "#modal-container",
         swap: "innerHTML",
         values: values,
       });

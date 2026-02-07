@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -42,6 +43,7 @@ if TYPE_CHECKING:
 
     from paperless_ngx_smart_ocr.config import Settings
     from paperless_ngx_smart_ocr.paperless import PaperlessClient
+    from paperless_ngx_smart_ocr.web.preview_store import PreviewStore
     from paperless_ngx_smart_ocr.workers import JobQueue
 
 
@@ -49,6 +51,7 @@ __all__ = [
     "create_app",
     "get_app_settings",
     "get_job_queue",
+    "get_preview_store",
     "get_service_client",
 ]
 
@@ -84,6 +87,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     from paperless_ngx_smart_ocr.paperless import (
         PaperlessClient as _PaperlessClient,
     )
+    from paperless_ngx_smart_ocr.web.preview_store import (
+        PreviewStore as _PreviewStore,
+    )
     from paperless_ngx_smart_ocr.workers import (
         JobQueue as _JobQueue,
     )
@@ -110,6 +116,23 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     app.state.service_client = service_client
 
+    # Create preview store for dry-run result caching
+    preview_store = _PreviewStore()
+    app.state.preview_store = preview_store
+
+    # Start periodic cleanup task for expired previews
+    async def _cleanup_loop() -> None:
+        while True:
+            await asyncio.sleep(60)
+            removed = await preview_store.cleanup_expired()
+            if removed:
+                logger.debug(
+                    "preview_store_cleanup",
+                    removed=removed,
+                )
+
+    cleanup_task = asyncio.create_task(_cleanup_loop())
+
     logger.info(
         "app_started",
         workers=settings.jobs.workers,
@@ -121,6 +144,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # --- Shutdown ---
     logger.info("app_shutting_down")
 
+    cleanup_task.cancel()
     await job_queue.stop()
     await service_client.close()
 
@@ -410,6 +434,18 @@ def get_service_client(request: Request) -> PaperlessClient:
         The service PaperlessClient instance.
     """
     return request.app.state.service_client  # type: ignore[no-any-return]
+
+
+def get_preview_store(request: Request) -> PreviewStore:
+    """FastAPI dependency: get the preview store.
+
+    Args:
+        request: The incoming HTTP request.
+
+    Returns:
+        The PreviewStore instance.
+    """
+    return request.app.state.preview_store  # type: ignore[no-any-return]
 
 
 # -------------------------------------------------------------------

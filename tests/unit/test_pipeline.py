@@ -24,7 +24,6 @@ from paperless_ngx_smart_ocr.pipeline import (
     PageAnalysis,
     PipelineError,
     PreprocessingError,
-    RegionLabel,
     Stage1Processor,
     Stage1Result,
     Stage2Processor,
@@ -154,46 +153,6 @@ class TestBoundingBox:
 
 
 # ---------------------------------------------------------------------------
-# Model Tests - RegionLabel
-# ---------------------------------------------------------------------------
-
-
-class TestRegionLabel:
-    """Tests for RegionLabel enum."""
-
-    def test_text_label(self) -> None:
-        """Test Text label value."""
-        assert RegionLabel.TEXT == "Text"
-        assert RegionLabel.TEXT.value == "Text"
-
-    def test_page_header_label(self) -> None:
-        """Test Page-header label value."""
-        assert RegionLabel.PAGE_HEADER == "Page-header"
-
-    def test_all_labels_exist(self) -> None:
-        """Test that all expected labels are defined."""
-        expected = {
-            "Caption",
-            "Footnote",
-            "Formula",
-            "List-item",
-            "Page-footer",
-            "Page-header",
-            "Picture",
-            "Figure",
-            "Section-header",
-            "Table",
-            "Form",
-            "Table-of-contents",
-            "Handwriting",
-            "Text",
-            "Text-inline-math",
-        }
-        actual = {label.value for label in RegionLabel}
-        assert actual == expected
-
-
-# ---------------------------------------------------------------------------
 # Model Tests - LayoutRegion
 # ---------------------------------------------------------------------------
 
@@ -205,7 +164,7 @@ class TestLayoutRegion:
         """Test that text regions are included by default."""
         region = LayoutRegion(
             bbox=BoundingBox(0, 0, 100, 100),
-            label=RegionLabel.TEXT,
+            label="Text",
             position=0,
             confidence=0.9,
         )
@@ -213,42 +172,52 @@ class TestLayoutRegion:
         assert region.should_ocr({"header", "footer"}) is True
 
     def test_should_ocr_excluded_region_exact_match(self) -> None:
-        """Test exclusion with exact label match."""
+        """Test exclusion with exact camelCase label match."""
         region = LayoutRegion(
             bbox=BoundingBox(0, 0, 100, 100),
-            label=RegionLabel.PAGE_HEADER,
+            label="PageHeader",
+            position=0,
+            confidence=0.9,
+        )
+        assert region.should_ocr({"PageHeader"}) is False
+
+    def test_should_ocr_excluded_region_normalized(self) -> None:
+        """Test exclusion with underscore-separated label."""
+        region = LayoutRegion(
+            bbox=BoundingBox(0, 0, 100, 100),
+            label="PageHeader",
+            position=0,
+            confidence=0.9,
+        )
+        assert region.should_ocr({"page_header"}) is False
+
+    def test_should_ocr_excluded_region_legacy_hyphen(self) -> None:
+        """Test exclusion with legacy hyphenated format."""
+        region = LayoutRegion(
+            bbox=BoundingBox(0, 0, 100, 100),
+            label="PageHeader",
             position=0,
             confidence=0.9,
         )
         assert region.should_ocr({"Page-header"}) is False
 
-    def test_should_ocr_excluded_region_normalized(self) -> None:
-        """Test exclusion with normalized label (underscores to hyphens)."""
-        region = LayoutRegion(
-            bbox=BoundingBox(0, 0, 100, 100),
-            label=RegionLabel.PAGE_HEADER,
-            position=0,
-            confidence=0.9,
-        )
-        # Config uses underscores, model uses hyphens
-        assert region.should_ocr({"page_header"}) is False
-
     def test_should_ocr_case_insensitive(self) -> None:
         """Test that exclusion is case-insensitive."""
         region = LayoutRegion(
             bbox=BoundingBox(0, 0, 100, 100),
-            label=RegionLabel.PAGE_FOOTER,
+            label="PageFooter",
             position=0,
             confidence=0.9,
         )
         assert region.should_ocr({"PAGE_FOOTER"}) is False
         assert region.should_ocr({"page-footer"}) is False
+        assert region.should_ocr({"PageFooter"}) is False
 
     def test_frozen(self) -> None:
         """Test that LayoutRegion is immutable."""
         region = LayoutRegion(
             bbox=BoundingBox(0, 0, 100, 100),
-            label=RegionLabel.TEXT,
+            label="Text",
             position=0,
             confidence=0.9,
         )
@@ -272,25 +241,25 @@ class TestLayoutResult:
             regions=[
                 LayoutRegion(
                     bbox=BoundingBox(0, 0, 100, 50),
-                    label=RegionLabel.PAGE_HEADER,
+                    label="PageHeader",
                     position=0,
                     confidence=0.9,
                 ),
                 LayoutRegion(
                     bbox=BoundingBox(0, 60, 100, 200),
-                    label=RegionLabel.TEXT,
+                    label="Text",
                     position=1,
                     confidence=0.95,
                 ),
                 LayoutRegion(
                     bbox=BoundingBox(0, 210, 100, 300),
-                    label=RegionLabel.TEXT,
+                    label="Text",
                     position=2,
                     confidence=0.4,  # Low confidence
                 ),
                 LayoutRegion(
                     bbox=BoundingBox(0, 310, 100, 350),
-                    label=RegionLabel.PAGE_FOOTER,
+                    label="PageFooter",
                     position=3,
                     confidence=0.85,
                 ),
@@ -318,7 +287,7 @@ class TestLayoutResult:
             exclude_labels={"page_header", "page_footer"}
         )
         assert len(regions) == 2
-        assert all(r.label == RegionLabel.TEXT for r in regions)
+        assert all(r.label == "Text" for r in regions)
 
     def test_get_text_regions_with_confidence_threshold(
         self, sample_layout_result: LayoutResult
@@ -331,9 +300,9 @@ class TestLayoutResult:
 
     def test_get_regions_by_label(self, sample_layout_result: LayoutResult) -> None:
         """Test getting regions by specific label."""
-        text_regions = sample_layout_result.get_regions_by_label(RegionLabel.TEXT)
+        text_regions = sample_layout_result.get_regions_by_label("Text")
         assert len(text_regions) == 2
-        assert all(r.label == RegionLabel.TEXT for r in text_regions)
+        assert all(r.label == "Text" for r in text_regions)
         # Should be sorted by position
         assert text_regions[0].position < text_regions[1].position
 

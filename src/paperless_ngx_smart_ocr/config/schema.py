@@ -187,6 +187,12 @@ class PaperlessConfig(ConfigBaseModel):
         url: Base URL of the Paperless-ngx instance.
         token: API authentication token (supports ${VAR} interpolation).
         token_file: Path to a file containing the API token.
+        archive_dir: Mount point for the paperless-ngx archive
+            directory. Required (along with ``database_url``) to
+            enable the "Replace PDF" feature.
+        database_url: PostgreSQL connection URL for updating
+            ``archive_checksum`` after archive replacement. Required
+            (along with ``archive_dir``) to enable "Replace PDF".
     """
 
     url: str = Field(
@@ -201,12 +207,25 @@ class PaperlessConfig(ConfigBaseModel):
         default=None,
         description="Path to file containing the API token",
     )
+    archive_dir: Path | None = Field(
+        default=None,
+        description="Mount point for paperless-ngx archive directory",
+    )
+    database_url: str | None = Field(
+        default=None,
+        description="PostgreSQL URL for archive_checksum updates",
+    )
 
     @field_validator("url")
     @classmethod
     def strip_trailing_slash(cls, v: str) -> str:
         """Remove trailing slash from URL to avoid double slashes."""
         return v.rstrip("/")
+
+    @property
+    def pdf_replacement_enabled(self) -> bool:
+        """Whether archive PDF replacement is available."""
+        return self.archive_dir is not None and (self.database_url is not None)
 
 
 # ---------------------------------------------------------------------------
@@ -345,12 +364,12 @@ class LLMConfig(ConfigBaseModel):
 
     Attributes:
         provider: LLM provider (openai, anthropic, ollama).
-        model: Model identifier (e.g., "gpt-4o-mini", "claude-3-5-sonnet").
+        model: Model identifier (e.g., "granite3.2-vision:2b", "gpt-4o-mini").
         api_key: API key (supports ${VAR} interpolation).
     """
 
-    provider: LLMProvider = Field(default=LLMProvider.OPENAI)
-    model: str = Field(default="gpt-4o-mini")
+    provider: LLMProvider = Field(default=LLMProvider.OLLAMA)
+    model: str = Field(default="granite3.2-vision:2b")
     api_key: str | None = Field(
         default=None,
         description="API key (supports ${VAR} interpolation)",

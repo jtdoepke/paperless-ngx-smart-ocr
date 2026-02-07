@@ -125,6 +125,7 @@ class DocumentMetadata(PaperlessBaseModel):
     original_size: int | None = None
     original_mime_type: str | None = None
     media_filename: str | None = None
+    archive_media_filename: str | None = None
     has_archive_version: bool = False
     original_metadata: list[dict[str, str]] = Field(default_factory=list)
     archive_checksum: str | None = None

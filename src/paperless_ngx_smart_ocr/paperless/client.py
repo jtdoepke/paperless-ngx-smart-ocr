@@ -462,6 +462,22 @@ class PaperlessClient:
         response = await self._request("GET", f"/documents/{document_id}/metadata/")
         return DocumentMetadata.model_validate(response.json())
 
+    async def get_archive_filename(
+        self,
+        document_id: int,
+    ) -> str | None:
+        """Get the archive media filename for a document.
+
+        Args:
+            document_id: The document ID.
+
+        Returns:
+            The relative archive filename within ARCHIVE_DIR,
+            or ``None`` if the document has no archive version.
+        """
+        metadata = await self.get_document_metadata(document_id)
+        return metadata.archive_media_filename
+
     @asynccontextmanager
     async def download_document(
         self,

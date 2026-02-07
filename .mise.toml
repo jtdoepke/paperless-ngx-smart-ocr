@@ -6,6 +6,6 @@ python = "3.12"
 uv = "latest"
 jq = "latest"
 
-[tasks.serve]
-description = "Start the web server"
-run = "uv run smart-ocr serve"
+[tasks.dev]
+description = "Start the web server with hot reload"
+run = "uv run smart-ocr serve --reload"

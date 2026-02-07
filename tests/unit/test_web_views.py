@@ -205,29 +205,6 @@ def _mock_pdf_download(
     return _download
 
 
-def _make_mock_pipeline_result(
-    document_id: int = 1,
-) -> MagicMock:
-    """Create a mock PipelineResult with to_dict() support."""
-    result = MagicMock()
-    result.to_dict.return_value = {
-        "document_id": document_id,
-        "success": True,
-        "dry_run": True,
-        "stage1_result": None,
-        "stage2_result": None,
-        "stage1_skipped_by_config": False,
-        "stage2_skipped_by_config": False,
-        "tags_updated": False,
-        "content_updated": False,
-        "document_uploaded": False,
-        "error": None,
-        "processing_time_seconds": 1.5,
-        "created_at": _NOW.isoformat(),
-    }
-    return result
-
-
 @pytest.fixture
 def mock_user_client() -> MagicMock:
     """Create a mock user client for dependency injection."""
@@ -517,20 +494,20 @@ class TestDocumentDetailView:
         response = client.get("/documents/42")
         assert "Test Document 42" in response.text
 
-    def test_contains_process_buttons(
+    def test_contains_process_button(
         self,
         test_app: FastAPI,
         mock_user_client: MagicMock,
         client: TestClient,
     ) -> None:
-        """Detail page contains process and dry-run buttons."""
+        """Detail page has process button and modal container."""
         doc = _make_document(document_id=42)
         mock_user_client.get_document = AsyncMock(
             return_value=doc,
         )
         response = client.get("/documents/42")
         assert "Process" in response.text
-        assert "Dry Run" in response.text
+        assert "modal-container" in response.text
 
     def test_not_found_returns_404(
         self,
@@ -717,249 +694,6 @@ class TestDocumentPdfProxy:
         )
         response = client.get("/documents/1/pdf")
         assert response.content == b"%PDF-1.4 test content"
-
-
-# ---------------------------------------------------------------------------
-# TestProcessDocumentView
-# ---------------------------------------------------------------------------
-
-
-class TestProcessDocumentView:
-    """Tests for POST /documents/{document_id}/process."""
-
-    def test_returns_html(self, test_app: FastAPI, client: TestClient) -> None:
-        """Returns HTML partial with job card."""
-        mock_job = _make_mock_job()
-        test_app.state.job_queue.submit = AsyncMock(
-            return_value=mock_job,
-        )
-
-        with patch(
-            "paperless_ngx_smart_ocr.web.routes.views.make_job_coroutine",
-        ):
-            response = client.post("/documents/1/process")
-
-        assert response.status_code == 200
-        assert "text/html" in response.headers["content-type"]
-
-    def test_returns_job_card(self, test_app: FastAPI, client: TestClient) -> None:
-        """Response contains job status information."""
-        mock_job = _make_mock_job(
-            job_id="test123",
-            document_id=5,
-        )
-        test_app.state.job_queue.submit = AsyncMock(
-            return_value=mock_job,
-        )
-
-        with patch(
-            "paperless_ngx_smart_ocr.web.routes.views.make_job_coroutine",
-        ):
-            response = client.post("/documents/5/process")
-
-        assert "pending" in response.text
-        assert "Process document 5" in response.text
-
-    def test_submits_to_queue(self, test_app: FastAPI, client: TestClient) -> None:
-        """Coroutine is submitted to the job queue."""
-        mock_job = _make_mock_job()
-        test_app.state.job_queue.submit = AsyncMock(
-            return_value=mock_job,
-        )
-
-        with patch(
-            "paperless_ngx_smart_ocr.web.routes.views.make_job_coroutine",
-        ):
-            client.post("/documents/7/process")
-
-        submit_kwargs = test_app.state.job_queue.submit.call_args.kwargs
-        assert submit_kwargs["name"] == "Process document 7"
-        assert submit_kwargs["document_id"] == 7
-
-
-# ---------------------------------------------------------------------------
-# TestDryRunView
-# ---------------------------------------------------------------------------
-
-
-class TestDryRunView:
-    """Tests for POST /documents/{document_id}/dry-run."""
-
-    def test_returns_html(self, test_app: FastAPI, client: TestClient) -> None:
-        """Returns HTML partial with result."""
-        mock_result = _make_mock_pipeline_result()
-
-        with patch(
-            "paperless_ngx_smart_ocr.pipeline.orchestrator.PipelineOrchestrator",
-        ) as mock_cls:
-            mock_cls.return_value.process = AsyncMock(
-                return_value=mock_result,
-            )
-            response = client.post("/documents/1/dry-run")
-
-        assert response.status_code == 200
-        assert "text/html" in response.headers["content-type"]
-
-    def test_shows_result(self, test_app: FastAPI, client: TestClient) -> None:
-        """Response contains pipeline result information."""
-        mock_result = _make_mock_pipeline_result()
-
-        with patch(
-            "paperless_ngx_smart_ocr.pipeline.orchestrator.PipelineOrchestrator",
-        ) as mock_cls:
-            mock_cls.return_value.process = AsyncMock(
-                return_value=mock_result,
-            )
-            response = client.post("/documents/1/dry-run")
-
-        assert "Dry Run Result" in response.text
-        assert "Success" in response.text
-
-    def test_passes_dry_run_true(self, test_app: FastAPI, client: TestClient) -> None:
-        """dry_run=True is passed to orchestrator.process()."""
-        mock_result = _make_mock_pipeline_result()
-
-        with patch(
-            "paperless_ngx_smart_ocr.pipeline.orchestrator.PipelineOrchestrator",
-        ) as mock_cls:
-            mock_cls.return_value.process = AsyncMock(
-                return_value=mock_result,
-            )
-            client.post("/documents/1/dry-run")
-
-        call_kwargs = mock_cls.return_value.process.call_args.kwargs
-        assert call_kwargs["dry_run"] is True
-
-    def test_does_not_use_job_queue(
-        self, test_app: FastAPI, client: TestClient
-    ) -> None:
-        """Dry-run runs synchronously, not via job queue."""
-        mock_result = _make_mock_pipeline_result()
-
-        with patch(
-            "paperless_ngx_smart_ocr.pipeline.orchestrator.PipelineOrchestrator",
-        ) as mock_cls:
-            mock_cls.return_value.process = AsyncMock(
-                return_value=mock_result,
-            )
-            client.post("/documents/1/dry-run")
-
-        test_app.state.job_queue.submit.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
-# TestBulkProcessView
-# ---------------------------------------------------------------------------
-
-
-class TestBulkProcessView:
-    """Tests for POST /documents/bulk-process."""
-
-    def test_returns_html(self, test_app: FastAPI, client: TestClient) -> None:
-        """Returns HTML with job cards."""
-        mock_job = _make_mock_job()
-        test_app.state.job_queue.submit = AsyncMock(
-            return_value=mock_job,
-        )
-        with patch(
-            "paperless_ngx_smart_ocr.web.routes.views.make_job_coroutine",
-        ):
-            response = client.post(
-                "/documents/bulk-process",
-                data={"document_ids": "1,2,3"},
-            )
-        assert response.status_code == 200
-        assert "text/html" in response.headers["content-type"]
-
-    def test_submits_multiple_jobs(self, test_app: FastAPI, client: TestClient) -> None:
-        """Each document ID gets its own job."""
-        mock_job = _make_mock_job()
-        test_app.state.job_queue.submit = AsyncMock(
-            return_value=mock_job,
-        )
-        with patch(
-            "paperless_ngx_smart_ocr.web.routes.views.make_job_coroutine",
-        ):
-            client.post(
-                "/documents/bulk-process",
-                data={"document_ids": "1,2,3"},
-            )
-        assert test_app.state.job_queue.submit.call_count == 3
-
-    def test_shows_count(self, test_app: FastAPI, client: TestClient) -> None:
-        """Response shows the number of submitted jobs."""
-        mock_job = _make_mock_job()
-        test_app.state.job_queue.submit = AsyncMock(
-            return_value=mock_job,
-        )
-        with patch(
-            "paperless_ngx_smart_ocr.web.routes.views.make_job_coroutine",
-        ):
-            response = client.post(
-                "/documents/bulk-process",
-                data={"document_ids": "1,2"},
-            )
-        assert "2 documents submitted" in response.text
-
-    def test_empty_ids_returns_zero(
-        self, test_app: FastAPI, client: TestClient
-    ) -> None:
-        """Empty document_ids returns 0 jobs."""
-        response = client.post(
-            "/documents/bulk-process",
-            data={"document_ids": ""},
-        )
-        assert response.status_code == 200
-        assert "0 documents submitted" in response.text
-
-    def test_filter_query_mode(
-        self,
-        test_app: FastAPI,
-        mock_user_client: MagicMock,
-        client: TestClient,
-    ) -> None:
-        """filter_query triggers server-side re-query."""
-        mock_user_client.list_documents = AsyncMock(
-            return_value=_make_paginated_response(
-                [_make_document(1), _make_document(2)],
-            ),
-        )
-        mock_job = _make_mock_job()
-        test_app.state.job_queue.submit = AsyncMock(
-            return_value=mock_job,
-        )
-        with patch(
-            "paperless_ngx_smart_ocr.web.routes.views.make_job_coroutine",
-        ):
-            response = client.post(
-                "/documents/bulk-process",
-                data={
-                    "filter_query": "&query=invoice",
-                },
-            )
-        assert response.status_code == 200
-        assert test_app.state.job_queue.submit.call_count == 2
-
-    def test_force_flag_forwarded(self, test_app: FastAPI, client: TestClient) -> None:
-        """force=true is forwarded to make_job_coroutine."""
-        mock_job = _make_mock_job()
-        test_app.state.job_queue.submit = AsyncMock(
-            return_value=mock_job,
-        )
-        with patch(
-            "paperless_ngx_smart_ocr.web.routes.views.make_job_coroutine",
-        ) as mock_make:
-            mock_make.return_value = MagicMock()
-            client.post(
-                "/documents/bulk-process",
-                data={
-                    "document_ids": "1",
-                    "force": "true",
-                },
-            )
-        mock_make.assert_called_once()
-        call_kwargs = mock_make.call_args.kwargs
-        assert call_kwargs["force"] is True
 
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 """Data models for the processing pipeline.
 
-This module defines dataclasses and enums used throughout the pipeline
-for representing layout detection results, document analysis, and
+This module defines dataclasses used throughout the pipeline for
+representing layout detection results, document analysis, and
 processing outcomes.
 """
 
@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 
@@ -24,56 +23,9 @@ __all__ = [
     "LayoutResult",
     "PageAnalysis",
     "PipelineResult",
-    "RegionLabel",
     "Stage1Result",
     "Stage2Result",
 ]
-
-
-# ---------------------------------------------------------------------------
-# Enums
-# ---------------------------------------------------------------------------
-
-
-class RegionLabel(StrEnum):
-    """Layout region labels detected by Surya.
-
-    These labels categorize different types of content regions in a document,
-    following Surya's layout detection model output.
-
-    Attributes:
-        CAPTION: Image or figure caption.
-        FOOTNOTE: Footnote text.
-        FORMULA: Mathematical formula.
-        LIST_ITEM: Item in a list.
-        PAGE_FOOTER: Page footer content.
-        PAGE_HEADER: Page header content.
-        PICTURE: Image or photograph.
-        FIGURE: Figure or diagram.
-        SECTION_HEADER: Section or chapter heading.
-        TABLE: Tabular data.
-        FORM: Form elements.
-        TABLE_OF_CONTENTS: Table of contents entries.
-        HANDWRITING: Handwritten text.
-        TEXT: Regular body text.
-        TEXT_INLINE_MATH: Text containing inline math.
-    """
-
-    CAPTION = "Caption"
-    FOOTNOTE = "Footnote"
-    FORMULA = "Formula"
-    LIST_ITEM = "List-item"
-    PAGE_FOOTER = "Page-footer"
-    PAGE_HEADER = "Page-header"
-    PICTURE = "Picture"
-    FIGURE = "Figure"
-    SECTION_HEADER = "Section-header"
-    TABLE = "Table"
-    FORM = "Form"
-    TABLE_OF_CONTENTS = "Table-of-contents"
-    HANDWRITING = "Handwriting"
-    TEXT = "Text"
-    TEXT_INLINE_MATH = "Text-inline-math"
 
 
 # ---------------------------------------------------------------------------
@@ -128,6 +80,29 @@ class BoundingBox:
         return (int(self.x0), int(self.y0), int(self.x1), int(self.y1))
 
 
+def _normalize_label(label: str) -> str:
+    """Normalize a region label for case-insensitive comparison.
+
+    Handles camelCase, hyphens, and underscores uniformly::
+
+        "PageHeader"  -> "page_header"
+        "Page-header" -> "page_header"
+        "page_header" -> "page_header"
+        "PAGE_HEADER" -> "page_header"
+    """
+    chars: list[str] = []
+    for i, c in enumerate(label):
+        if (
+            c.isupper()
+            and i > 0
+            and not label[i - 1].isupper()
+            and label[i - 1] not in ("_", "-")
+        ):
+            chars.append("_")
+        chars.append(c.lower())
+    return "".join(chars).replace("-", "_")
+
+
 @dataclass(frozen=True, slots=True)
 class LayoutRegion:
     """A detected layout region from Surya.
@@ -144,7 +119,7 @@ class LayoutRegion:
     """
 
     bbox: BoundingBox
-    label: RegionLabel
+    label: str
     position: int
     confidence: float
     polygon: tuple[tuple[float, float], ...] | None = None
@@ -153,21 +128,18 @@ class LayoutRegion:
         """Determine if this region should be included in OCR.
 
         Args:
-            exclude_labels: Set of label names to exclude (case-insensitive,
-                supports both underscore and hyphen separators).
+            exclude_labels: Set of label names to exclude. Matching is
+                case-insensitive and handles camelCase, hyphens, and
+                underscores (e.g. ``"PageHeader"``, ``"page_header"``,
+                and ``"Page-header"`` all match).
 
         Returns:
             True if the region should be OCR'd, False if excluded.
         """
-        # Normalize the region's label for comparison
-        label_normalized = self.label.value.lower().replace("-", "_")
-
-        for exclude in exclude_labels:
-            exclude_normalized = exclude.lower().replace("-", "_")
-            if exclude_normalized == label_normalized:
-                return False
-
-        return True
+        label_normalized = _normalize_label(self.label)
+        return not any(
+            _normalize_label(ex) == label_normalized for ex in exclude_labels
+        )
 
 
 @dataclass(slots=True)
@@ -213,7 +185,7 @@ class LayoutResult:
         ]
         return sorted(regions, key=lambda r: r.position)
 
-    def get_regions_by_label(self, label: RegionLabel) -> list[LayoutRegion]:
+    def get_regions_by_label(self, label: str) -> list[LayoutRegion]:
         """Get all regions of a specific type.
 
         Args:

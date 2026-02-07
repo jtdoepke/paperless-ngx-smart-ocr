@@ -342,6 +342,13 @@ def find_config_file(config_path: Path | str | None = None) -> Path | None:
             return path
         return None
 
+    # Check SMARTOCR_CONFIG_FILE environment variable
+    env_config = os.environ.get("SMARTOCR_CONFIG_FILE")
+    if env_config:
+        path = Path(env_config)
+        if path.is_file():
+            return path
+
     # Search standard locations
     for search_path in Settings.CONFIG_SEARCH_PATHS:
         if search_path.is_file():

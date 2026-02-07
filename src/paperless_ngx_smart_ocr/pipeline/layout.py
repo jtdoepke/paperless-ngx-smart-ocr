@@ -24,7 +24,6 @@ from paperless_ngx_smart_ocr.pipeline.models import (
     BoundingBox,
     LayoutRegion,
     LayoutResult,
-    RegionLabel,
 )
 
 
@@ -72,11 +71,11 @@ def get_layout_predictor(gpu_mode: GPUMode = GPUMode.AUTO) -> SuryaLayoutPredict
 
     try:
         # Import Surya here to avoid loading models at module import time
+        from surya.foundation import FoundationPredictor
         from surya.layout import LayoutPredictor
+        from surya.settings import settings as surya_settings
 
         # Configure device based on gpu_mode
-        # Surya uses device auto-detection by default
-        # For explicit control, environment variables can be set before import
         device = None
         if gpu_mode == GPUMode.CPU:
             device = "cpu"
@@ -84,7 +83,13 @@ def get_layout_predictor(gpu_mode: GPUMode = GPUMode.AUTO) -> SuryaLayoutPredict
             device = "cuda"
         # AUTO lets Surya decide
 
-        predictor = LayoutPredictor(device=device)
+        # LayoutPredictor requires a FoundationPredictor that
+        # handles model loading and device placement.
+        foundation = FoundationPredictor(
+            checkpoint=surya_settings.LAYOUT_MODEL_CHECKPOINT,
+            device=device,
+        )
+        predictor = LayoutPredictor(foundation)
         _predictor_cache[gpu_mode] = predictor
 
         logger.info("layout_predictor_loaded", gpu_mode=gpu_mode.value)
@@ -332,28 +337,15 @@ class LayoutDetector:
                 y1=float(bbox_coords[3]),
             )
 
-            # Extract label
-            label_str = getattr(bbox_data, "label", "Text")
-            try:
-                label = RegionLabel(label_str)
-            except ValueError:
-                # Unknown label, default to TEXT
-                self._logger.debug(
-                    "unknown_region_label",
-                    label=label_str,
-                    page=page_number,
-                )
-                label = RegionLabel.TEXT
+            # Extract label — pass through as-is from Surya
+            label: str = getattr(bbox_data, "label", "Text")
 
             # Extract confidence
             # Surya provides confidence directly or via top_k
             confidence = getattr(bbox_data, "confidence", 0.0)
             if confidence == 0.0:
                 top_k = getattr(bbox_data, "top_k", {})
-                if isinstance(top_k, dict):
-                    confidence = top_k.get(label_str, 0.5)
-                else:
-                    confidence = 0.5
+                confidence = top_k.get(label, 0.5) if isinstance(top_k, dict) else 0.5
 
             # Extract position (reading order)
             position = getattr(bbox_data, "position", idx)

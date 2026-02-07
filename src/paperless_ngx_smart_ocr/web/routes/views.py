@@ -13,7 +13,7 @@ from paperless_ngx_smart_ocr.paperless.exceptions import (
 )
 from paperless_ngx_smart_ocr.web.auth import (
     get_user_client,
-    make_job_coroutine,
+    make_preview_job_coroutine,
 )
 from paperless_ngx_smart_ocr.workers.exceptions import (
     JobAlreadyCancelledError,
@@ -30,6 +30,11 @@ if TYPE_CHECKING:
 
     from paperless_ngx_smart_ocr.config import Settings
     from paperless_ngx_smart_ocr.paperless import PaperlessClient
+    from paperless_ngx_smart_ocr.pipeline.models import PipelineResult
+    from paperless_ngx_smart_ocr.web.preview_store import (
+        BulkPreviewBatch,
+        PreviewStore,
+    )
     from paperless_ngx_smart_ocr.workers import JobQueue
 
 
@@ -110,6 +115,93 @@ def _render(
 # -------------------------------------------------------------------
 
 
+def _check_archive_dir(
+    settings: Settings,
+) -> dict[str, object]:
+    """Check if the archive directory is configured and readable.
+
+    Returns:
+        Dict with ``configured``, ``ok``, and ``message`` keys.
+    """
+    archive_dir = settings.paperless.archive_dir
+    if archive_dir is None:
+        return {
+            "configured": False,
+            "ok": False,
+            "message": "Not configured",
+        }
+    try:
+        if not archive_dir.exists():
+            return {
+                "configured": True,
+                "ok": False,
+                "message": f"Directory not found: {archive_dir}",
+            }
+        if not archive_dir.is_dir():
+            return {
+                "configured": True,
+                "ok": False,
+                "message": f"Not a directory: {archive_dir}",
+            }
+        # Check readability by listing contents
+        next(archive_dir.iterdir(), None)
+    except PermissionError:
+        return {
+            "configured": True,
+            "ok": False,
+            "message": f"Permission denied: {archive_dir}",
+        }
+    except OSError as exc:
+        return {
+            "configured": True,
+            "ok": False,
+            "message": str(exc),
+        }
+    else:
+        return {
+            "configured": True,
+            "ok": True,
+            "message": "Readable",
+        }
+
+
+async def _check_database(
+    settings: Settings,
+) -> dict[str, object]:
+    """Check if the PostgreSQL database is configured and reachable.
+
+    Returns:
+        Dict with ``configured``, ``ok``, and ``message`` keys.
+    """
+    database_url = settings.paperless.database_url
+    if database_url is None:
+        return {
+            "configured": False,
+            "ok": False,
+            "message": "Not configured",
+        }
+    try:
+        import asyncpg
+
+        conn = await asyncpg.connect(database_url)
+        try:
+            await conn.execute("SELECT 1")
+        finally:
+            await conn.close()
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "configured": True,
+            "ok": False,
+            "message": str(exc),
+        }
+    else:
+        return {
+            "configured": True,
+            "ok": True,
+            "message": "Connected",
+        }
+
+
 @router.get("/", response_class=HTMLResponse)
 async def index(
     request: Request,
@@ -129,10 +221,19 @@ async def index(
     except Exception:  # noqa: BLE001
         ready = False
 
+    settings: Settings = request.app.state.settings
+    archive_status = _check_archive_dir(settings)
+    db_status = await _check_database(settings)
+
     templates = _get_templates(request)
     return templates.TemplateResponse(
         "index.html",
-        _ctx(request, ready=ready),
+        _ctx(
+            request,
+            ready=ready,
+            archive_status=archive_status,
+            db_status=db_status,
+        ),
     )
 
 
@@ -374,6 +475,7 @@ async def document_detail(
         tag_names=tag_names,
         stage1_enabled=settings.pipeline.stage1.enabled,
         stage2_enabled=settings.pipeline.stage2.enabled,
+        llm_enabled=settings.pipeline.stage2.marker.use_llm,
     )
 
 
@@ -418,79 +520,148 @@ async def document_pdf_proxy(
     )
 
 
-@router.post(
-    "/documents/{document_id}/process",
-    response_class=HTMLResponse,
-)
-async def process_document_view(
-    request: Request,
-    document_id: int = Path(...),
-    force: bool = Form(default=False),  # noqa: FBT001
-) -> Response:
-    """Submit a document for background processing (UI).
+# -------------------------------------------------------------------
+# Preview / Apply flow
+# -------------------------------------------------------------------
 
-    Returns an htmx partial with the new job card that auto-polls
-    for status updates.
+
+def _render_markdown_to_html(markdown: str) -> str:
+    """Render markdown to HTML for the preview modal.
+
+    Uses a simple conversion; falls back to escaped pre block on
+    error.
 
     Args:
-        request: The incoming HTTP request.
-        document_id: The paperless-ngx document ID.
-        force: Force processing regardless of born-digital status.
+        markdown: Raw markdown text.
 
     Returns:
-        Job card partial.
+        HTML string.
     """
-    settings: Settings = request.app.state.settings
-    job_queue: JobQueue = request.app.state.job_queue
+    try:
+        import markdown as md
 
-    coro = make_job_coroutine(
-        document_id,
-        settings=settings,
-        base_url=settings.paperless.url,
-        token=request.state.paperless_token,
-        force=force,
+        result: str = md.markdown(
+            markdown,
+            extensions=["tables", "fenced_code"],
+        )
+    except Exception:  # noqa: BLE001
+        import html
+
+        return f"<pre>{html.escape(markdown)}</pre>"
+    else:
+        return result
+
+
+async def _build_preview_entry(
+    document_id: int,
+    result: PipelineResult,
+    *,
+    preview_store: PreviewStore,
+) -> tuple[str, str, bytes | None]:
+    """Read temp files and store a preview entry.
+
+    Must be called from the ``before_cleanup`` callback while temp
+    files still exist.
+
+    Args:
+        document_id: The document ID.
+        result: Pipeline result (temp files still accessible).
+        preview_store: The preview store instance.
+
+    Returns:
+        Tuple of (preview_id, markdown, ocr_pdf_bytes).
+    """
+    from paperless_ngx_smart_ocr.web.preview_store import (
+        PreviewEntry,
     )
-    job = await job_queue.submit(
-        coro,
-        name=f"Process document {document_id}",
+
+    markdown = ""
+    ocr_pdf_bytes: bytes | None = None
+
+    if (
+        result.stage2_result
+        and result.stage2_result.success
+        and result.stage2_result.markdown
+    ):
+        markdown = result.stage2_result.markdown
+
+    if (
+        result.stage1_result
+        and result.stage1_result.success
+        and result.stage1_result.output_path
+        and result.stage1_result.output_path.exists()
+    ):
+        ocr_pdf_bytes = result.stage1_result.output_path.read_bytes()
+
+    preview_id = preview_store.generate_id()
+    entry = PreviewEntry(
+        preview_id=preview_id,
         document_id=document_id,
+        pipeline_result=result,
+        markdown=markdown,
+        ocr_pdf_bytes=ocr_pdf_bytes,
     )
-
-    templates = _get_templates(request)
-    return templates.TemplateResponse(
-        "partials/job_card.html",
-        _ctx(request, job=job.to_dict()),
-    )
+    await preview_store.store(entry)
+    return preview_id, markdown, ocr_pdf_bytes
 
 
 @router.post(
-    "/documents/{document_id}/dry-run",
+    "/documents/{document_id}/preview",
     response_class=HTMLResponse,
 )
-async def dry_run_view(
+async def preview_document_view(
     request: Request,
     document_id: int = Path(...),
-    force: bool = Form(default=False),  # noqa: FBT001
+    use_llm: bool = Form(default=False),  # noqa: FBT001
     client: PaperlessClient = Depends(get_user_client),  # noqa: B008
 ) -> Response:
-    """Run a dry-run preview of document processing (UI).
+    """Run a dry-run and show results in the preview modal.
 
-    Processes synchronously and returns the result as an htmx partial.
+    Processes the document synchronously through the pipeline in
+    dry-run mode, stores the result in the preview store, and
+    returns the preview modal HTML.
 
     Args:
         request: The incoming HTTP request.
         document_id: The paperless-ngx document ID.
-        force: Force processing regardless of born-digital status.
+        use_llm: Whether to enable LLM for Stage 2 Markdown.
         client: Per-request PaperlessClient from user cookie.
 
     Returns:
-        Process result partial.
+        Preview modal partial.
     """
     from paperless_ngx_smart_ocr.pipeline.orchestrator import (
         PipelineOrchestrator,
     )
 
     settings: Settings = request.app.state.settings
+    preview_store: PreviewStore = request.app.state.preview_store
+
+    # Override use_llm if it differs from config
+    if use_llm != settings.pipeline.stage2.marker.use_llm:
+        marker = settings.pipeline.stage2.marker.model_copy(
+            update={"use_llm": use_llm},
+        )
+        stage2 = settings.pipeline.stage2.model_copy(
+            update={"marker": marker},
+        )
+        pipeline = settings.pipeline.model_copy(
+            update={"stage2": stage2},
+        )
+        settings = settings.model_copy(update={"pipeline": pipeline})
+
+    # Run dry-run with callback to capture temp files
+    captured: dict[str, object] = {}
+
+    async def _capture(result: PipelineResult) -> None:
+        pid, md, pdf_bytes = await _build_preview_entry(
+            document_id,
+            result,
+            preview_store=preview_store,
+        )
+        captured["preview_id"] = pid
+        captured["markdown"] = md
+        captured["ocr_pdf_bytes"] = pdf_bytes
 
     orchestrator = PipelineOrchestrator(
         settings=settings,
@@ -498,74 +669,506 @@ async def dry_run_view(
     )
     result = await orchestrator.process(
         document_id,
-        force=force,
+        force=True,
         dry_run=True,
+        before_cleanup=_capture,
     )
+
+    preview_id: str = captured.get("preview_id", "")  # type: ignore[assignment]
+    markdown: str = captured.get("markdown", "")  # type: ignore[assignment]
+    ocr_pdf_bytes: bytes | None = captured.get("ocr_pdf_bytes")  # type: ignore[assignment]
+
+    # Get document title for the modal header
+    try:
+        doc = await client.get_document(document_id)
+        document_title = doc.title
+    except Exception:  # noqa: BLE001
+        document_title = f"Document {document_id}"
+
+    markdown_html = _render_markdown_to_html(markdown) if markdown else ""
 
     templates = _get_templates(request)
     return templates.TemplateResponse(
-        "partials/process_result.html",
-        _ctx(request, result=result.to_dict()),
+        "partials/preview_modal.html",
+        _ctx(
+            request,
+            document_id=document_id,
+            document_title=document_title,
+            preview_id=preview_id,
+            result=result,
+            markdown=markdown,
+            markdown_html=markdown_html,
+            has_ocr_pdf=ocr_pdf_bytes is not None,
+            archive_dir_configured=(settings.paperless.pdf_replacement_enabled),
+        ),
     )
 
 
 @router.post(
-    "/documents/bulk-process",
+    "/documents/{document_id}/apply/{preview_id}",
     response_class=HTMLResponse,
 )
-async def bulk_process_view(
+async def apply_preview_view(
+    request: Request,
+    document_id: int = Path(...),
+    preview_id: str = Path(...),
+    replace_pdf: bool = Form(default=False),  # noqa: FBT001
+    replace_content: bool = Form(default=False),  # noqa: FBT001
+    client: PaperlessClient = Depends(get_user_client),  # noqa: B008
+) -> Response:
+    """Apply preview results to the document.
+
+    Commits the selected actions (PDF replacement, content update,
+    tag update) from a stored preview entry.
+
+    Args:
+        request: The incoming HTTP request.
+        document_id: The paperless-ngx document ID.
+        preview_id: The preview store entry ID.
+        replace_pdf: Whether to replace the archive PDF.
+        replace_content: Whether to replace document content.
+        client: Per-request PaperlessClient from user cookie.
+
+    Returns:
+        Apply result partial.
+    """
+    from paperless_ngx_smart_ocr.paperless.models import (
+        DocumentUpdate,
+    )
+
+    settings: Settings = request.app.state.settings
+    preview_store: PreviewStore = request.app.state.preview_store
+    templates = _get_templates(request)
+
+    entry = await preview_store.get(preview_id)
+    if entry is None or entry.document_id != document_id:
+        return templates.TemplateResponse(
+            "partials/apply_result.html",
+            _ctx(
+                request,
+                success=False,
+                error="Preview expired or not found. Please try again.",
+                pdf_replaced=False,
+                content_replaced=False,
+                tags_updated=False,
+            ),
+        )
+
+    pdf_replaced = False
+    content_replaced = False
+    tags_updated = False
+    error: str | None = None
+
+    try:
+        # Replace archive PDF via shared filesystem
+        if (
+            replace_pdf
+            and entry.ocr_pdf_bytes
+            and settings.paperless.pdf_replacement_enabled
+        ):
+            archive_filename = await client.get_archive_filename(document_id)
+            if archive_filename:
+                from paperless_ngx_smart_ocr.web.archive import (
+                    replace_archive_pdf,
+                )
+
+                await replace_archive_pdf(
+                    archive_dir=settings.paperless.archive_dir,  # type: ignore[arg-type]
+                    archive_media_filename=archive_filename,
+                    pdf_bytes=entry.ocr_pdf_bytes,
+                    database_url=settings.paperless.database_url,  # type: ignore[arg-type]
+                    document_id=document_id,
+                )
+                pdf_replaced = True
+
+        # Replace content via API
+        if replace_content and entry.markdown:
+            await client.update_document(
+                document_id,
+                DocumentUpdate(content=entry.markdown),
+            )
+            content_replaced = True
+
+        # Clean up
+        await preview_store.remove(preview_id)
+
+    except Exception as exc:  # noqa: BLE001
+        error = str(exc)
+
+    return templates.TemplateResponse(
+        "partials/apply_result.html",
+        _ctx(
+            request,
+            success=error is None,
+            error=error,
+            pdf_replaced=pdf_replaced,
+            content_replaced=content_replaced,
+            tags_updated=tags_updated,
+        ),
+    )
+
+
+@router.get("/documents/{document_id}/preview-pdf/{preview_id}")
+async def preview_pdf_proxy(
+    _request: Request,
+    document_id: int = Path(...),
+    preview_id: str = Path(...),
+) -> Response:
+    """Stream the OCR'd PDF from the preview store.
+
+    Falls back to a 404 if the preview entry doesn't exist or has
+    no OCR'd PDF bytes.
+
+    Args:
+        _request: The incoming HTTP request.
+        document_id: The paperless-ngx document ID.
+        preview_id: The preview store entry ID.
+
+    Returns:
+        PDF response or 404.
+    """
+    from starlette.responses import Response as StarletteResponse
+
+    preview_store: PreviewStore = _request.app.state.preview_store
+    entry = await preview_store.get(preview_id)
+
+    if entry is None or entry.document_id != document_id or entry.ocr_pdf_bytes is None:
+        return StarletteResponse(
+            content=b"Preview not found",
+            status_code=404,
+            media_type="text/plain",
+        )
+
+    return StarletteResponse(
+        content=entry.ocr_pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "inline"},
+    )
+
+
+# -------------------------------------------------------------------
+# Bulk Preview / Review / Apply
+# -------------------------------------------------------------------
+
+
+@router.post(
+    "/documents/bulk-preview",
+    response_class=HTMLResponse,
+)
+async def bulk_preview_view(
     request: Request,
     document_ids: str = Form(default=""),
     filter_query: str = Form(default=""),
-    force: bool = Form(default=False),  # noqa: FBT001
     client: PaperlessClient = Depends(get_user_client),  # noqa: B008
 ) -> Response:
-    """Submit multiple documents for background processing (UI).
+    """Submit dry-run jobs for bulk preview review.
 
-    Accepts either an explicit comma-separated list of document IDs
-    or a filter query string to re-query all matching documents.
+    Creates a batch in the preview store, submits dry-run jobs
+    for each document, and returns the review table modal.
 
     Args:
         request: The incoming HTTP request.
         document_ids: Comma-separated document IDs.
-        filter_query: URL filter query string for "all matching" mode.
-        force: Force processing regardless of born-digital status.
+        filter_query: URL filter query string for "all matching".
         client: Per-request PaperlessClient from user cookie.
 
     Returns:
-        Bulk jobs partial with one job card per document.
+        Bulk review table modal partial.
     """
+    from paperless_ngx_smart_ocr.web.preview_store import (
+        BulkPreviewBatch,
+    )
+
     settings: Settings = request.app.state.settings
     job_queue: JobQueue = request.app.state.job_queue
+    preview_store: PreviewStore = request.app.state.preview_store
 
     doc_ids = [int(x.strip()) for x in document_ids.split(",") if x.strip()]
-
     if not doc_ids and filter_query:
         doc_ids = await _collect_filtered_ids(
             client,
             filter_query,
         )
 
-    jobs = []
+    batch_id = preview_store.generate_id()
+    job_ids: dict[int, str] = {}
+
     for doc_id in doc_ids:
-        coro = make_job_coroutine(
+        coro = make_preview_job_coroutine(
             doc_id,
             settings=settings,
             base_url=settings.paperless.url,
             token=request.state.paperless_token,
-            force=force,
+            preview_store=preview_store,
         )
         job = await job_queue.submit(
             coro,
-            name=f"Process document {doc_id}",
+            name=f"Preview document {doc_id}",
             document_id=doc_id,
         )
-        jobs.append(job.to_dict())
+        job_ids[doc_id] = job.id
+
+    batch = BulkPreviewBatch(
+        batch_id=batch_id,
+        document_ids=doc_ids,
+        job_ids=job_ids,
+    )
+    await preview_store.store_batch(batch)
 
     templates = _get_templates(request)
     return templates.TemplateResponse(
-        "partials/bulk_jobs.html",
-        _ctx(request, jobs=jobs, count=len(jobs)),
+        "partials/bulk_review_table.html",
+        _ctx(
+            request,
+            batch_id=batch_id,
+            document_ids=doc_ids,
+            total=len(doc_ids),
+            # Initial rows all show "processing" status
+            **{f"status_{did}": "pending" for did in doc_ids},
+        ),
+    )
+
+
+async def _collect_batch_rows(
+    batch: BulkPreviewBatch,
+    job_queue: JobQueue,
+    preview_store: PreviewStore,
+) -> tuple[list[dict[str, object]], bool]:
+    """Check job statuses for a batch and build row context dicts.
+
+    Returns:
+        Tuple of (rows_context, all_done).
+    """
+    all_done = True
+    rows: list[dict[str, object]] = []
+
+    for doc_id in batch.document_ids:
+        job_id = batch.job_ids.get(doc_id)
+        status = "pending"
+        preview_id: str | None = None
+
+        if job_id:
+            try:
+                job = await job_queue.get(job_id)
+                if job.status == JobStatus.COMPLETED:
+                    status = "completed"
+                    preview_id = batch.preview_ids.get(doc_id)
+                    if not preview_id:
+                        preview_id = await _find_preview_for_doc(preview_store, doc_id)
+                        if preview_id:
+                            batch.preview_ids[doc_id] = preview_id
+                elif job.status == JobStatus.FAILED:
+                    status = "failed"
+                else:
+                    all_done = False
+            except Exception:  # noqa: BLE001
+                status = "failed"
+
+        rows.append(
+            {
+                "doc_id": doc_id,
+                "status": status,
+                "preview_id": preview_id,
+            }
+        )
+
+    return rows, all_done
+
+
+@router.get(
+    "/documents/bulk-review/{batch_id}",
+    response_class=HTMLResponse,
+)
+async def bulk_review_poll(
+    request: Request,
+    batch_id: str = Path(...),
+) -> Response:
+    """Poll batch status and return updated review rows.
+
+    Called by htmx every 3s to update the review table with
+    completed/failed dry-run results.
+
+    Args:
+        request: The incoming HTTP request.
+        batch_id: The batch identifier.
+
+    Returns:
+        Updated table body rows.
+    """
+    preview_store: PreviewStore = request.app.state.preview_store
+    job_queue: JobQueue = request.app.state.job_queue
+    templates = _get_templates(request)
+
+    batch = await preview_store.get_batch(batch_id)
+    if batch is None:
+        return templates.TemplateResponse(
+            "partials/error.html",
+            _ctx(
+                request,
+                error="Batch expired or not found.",
+            ),
+        )
+
+    # Check job statuses and collect preview IDs
+    rows_context, all_done = await _collect_batch_rows(batch, job_queue, preview_store)
+
+    # Build response - render table body rows
+    html_parts = []
+    for row in rows_context:
+        resp = templates.TemplateResponse(
+            "partials/bulk_review_row.html",
+            _ctx(request, **row),
+        )
+        html_parts.append(bytes(resp.body).decode())
+
+    # If all done, stop polling by not including hx-trigger
+    body = "".join(html_parts)
+    if all_done:
+        # Wrap in table body that replaces the polling div
+        body = (
+            f'<table class="w-full text-sm">'
+            f'<thead class="sticky top-0 bg-gray-50'
+            f' dark:bg-gray-700"><tr>'
+            f'<th class="px-4 py-2 text-left text-gray-500'
+            f' dark:text-gray-400 font-medium">Include</th>'
+            f'<th class="px-4 py-2 text-left text-gray-500'
+            f' dark:text-gray-400 font-medium">ID</th>'
+            f'<th class="px-4 py-2 text-left text-gray-500'
+            f' dark:text-gray-400 font-medium">Status</th>'
+            f'<th class="px-4 py-2 text-left text-gray-500'
+            f' dark:text-gray-400 font-medium">Preview</th>'
+            f"</tr></thead><tbody>{body}</tbody></table>"
+        )
+
+    return HTMLResponse(content=body)
+
+
+async def _find_preview_for_doc(
+    preview_store: PreviewStore,
+    document_id: int,
+) -> str | None:
+    """Find a preview entry for a document in the store.
+
+    Scans the preview store's entries for one matching the
+    document ID.
+
+    Args:
+        preview_store: The preview store.
+        document_id: The document ID to search for.
+
+    Returns:
+        Preview ID if found, None otherwise.
+    """
+    # Access internal entries under lock
+    async with preview_store._lock:  # noqa: SLF001
+        for pid, entry in preview_store._entries.items():  # noqa: SLF001
+            if entry.document_id == document_id:
+                return pid
+    return None
+
+
+@router.post(
+    "/documents/bulk-apply/{batch_id}",
+    response_class=HTMLResponse,
+)
+async def bulk_apply_view(
+    request: Request,
+    batch_id: str = Path(...),
+    client: PaperlessClient = Depends(get_user_client),  # noqa: B008
+) -> Response:
+    """Apply all successful previews in a batch.
+
+    Iterates over the batch's preview entries and applies content
+    updates for each included document.
+
+    Args:
+        request: The incoming HTTP request.
+        batch_id: The batch identifier.
+        client: Per-request PaperlessClient from user cookie.
+
+    Returns:
+        Apply result partial.
+    """
+    from paperless_ngx_smart_ocr.paperless.models import (
+        DocumentUpdate,
+    )
+
+    settings: Settings = request.app.state.settings
+    preview_store: PreviewStore = request.app.state.preview_store
+    templates = _get_templates(request)
+
+    batch = await preview_store.get_batch(batch_id)
+    if batch is None:
+        return templates.TemplateResponse(
+            "partials/apply_result.html",
+            _ctx(
+                request,
+                success=False,
+                error="Batch expired or not found.",
+                pdf_replaced=False,
+                content_replaced=False,
+                tags_updated=False,
+            ),
+        )
+
+    applied_count = 0
+    errors: list[str] = []
+
+    for doc_id in batch.document_ids:
+        if doc_id in batch.excluded_ids:
+            continue
+
+        pid = batch.preview_ids.get(doc_id)
+        if not pid:
+            continue
+
+        entry = await preview_store.get(pid)
+        if entry is None or not entry.pipeline_result.success:
+            continue
+
+        try:
+            # Replace archive PDF if configured
+            if entry.ocr_pdf_bytes and settings.paperless.pdf_replacement_enabled:
+                archive_filename = await client.get_archive_filename(doc_id)
+                if archive_filename:
+                    from paperless_ngx_smart_ocr.web.archive import (
+                        replace_archive_pdf,
+                    )
+
+                    await replace_archive_pdf(
+                        archive_dir=settings.paperless.archive_dir,  # type: ignore[arg-type]
+                        archive_media_filename=archive_filename,
+                        pdf_bytes=entry.ocr_pdf_bytes,
+                        database_url=settings.paperless.database_url,  # type: ignore[arg-type]
+                        document_id=doc_id,
+                    )
+
+            # Replace content
+            if entry.markdown:
+                await client.update_document(
+                    doc_id,
+                    DocumentUpdate(content=entry.markdown),
+                )
+
+            applied_count += 1
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"Doc {doc_id}: {exc}")
+
+    # Clean up batch
+    await preview_store.remove_batch(batch_id)
+
+    error_msg = "; ".join(errors) if errors else None
+
+    return templates.TemplateResponse(
+        "partials/apply_result.html",
+        _ctx(
+            request,
+            success=not errors,
+            error=error_msg,
+            pdf_replaced=applied_count > 0,
+            content_replaced=applied_count > 0,
+            tags_updated=False,
+        ),
     )
 
 

@@ -22,11 +22,17 @@ from paperless_ngx_smart_ocr.pipeline.models import (
     Stage1Result,
     Stage2Result,
 )
+from paperless_ngx_smart_ocr.pipeline.pdf_utils import (
+    PdfProperties,
+    detect_pdf_properties,
+)
 from paperless_ngx_smart_ocr.pipeline.stage1_ocr import Stage1Processor
 from paperless_ngx_smart_ocr.pipeline.stage2_markdown import Stage2Processor
 
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from paperless_ngx_smart_ocr.config import Settings
     from paperless_ngx_smart_ocr.paperless import PaperlessClient
 
@@ -87,6 +93,7 @@ class PipelineOrchestrator:
         *,
         force: bool = False,
         dry_run: bool = False,
+        before_cleanup: (Callable[[PipelineResult], Awaitable[None]] | None) = None,
     ) -> PipelineResult:
         """Process a document through the full pipeline.
 
@@ -101,6 +108,10 @@ class PipelineOrchestrator:
             force: If True, force processing regardless of born-digital status.
             dry_run: If True, run stages but skip content updates and
                 tag changes in paperless-ngx (preview mode).
+            before_cleanup: Optional async callback invoked with the
+                ``PipelineResult`` while temporary files still exist.
+                Use this to read OCR'd PDF bytes or other temp outputs
+                before the ``TemporaryDirectory`` is deleted.
 
         Returns:
             PipelineResult with the processing outcome.
@@ -173,10 +184,16 @@ class PipelineOrchestrator:
                 except PaperlessError:
                     existing_content = ""
 
+                # Step 2b: Detect archive PDF properties for format matching
+                pdf_props = await self._detect_archive_properties(document_id, tmp_path)
+
                 # Step 3: Stage 1 (OCR)
                 if stage1_config.enabled:
                     stage1_result = await self._run_stage1(
-                        original_path, ocr_output_path, force=force
+                        original_path,
+                        ocr_output_path,
+                        force=force,
+                        pdf_properties=pdf_props,
                     )
                     self._logger.info(
                         "pipeline_stage1_completed",
@@ -185,14 +202,6 @@ class PipelineOrchestrator:
                         skipped=stage1_result.skipped,
                         processing_time_seconds=stage1_result.processing_time_seconds,
                     )
-                    # Log known limitation: OCR PDF upload not supported
-                    if stage1_result.success and not stage1_result.skipped:
-                        self._logger.info(
-                            "pipeline_ocr_upload_skipped",
-                            document_id=document_id,
-                            reason="Paperless-ngx API does not support "
-                            "replacing existing document files",
-                        )
 
                 # Step 4: Stage 2 (Markdown)
                 if stage2_config.enabled:
@@ -220,39 +229,45 @@ class PipelineOrchestrator:
                             existing_content,
                         )
 
-            # Step 5: Determine overall success
-            success = self._determine_success(
-                stage1_result=stage1_result,
-                stage2_result=stage2_result,
-                stage1_enabled=stage1_config.enabled,
-                stage2_enabled=stage2_config.enabled,
-            )
+                # Step 5: Determine overall success
+                success = self._determine_success(
+                    stage1_result=stage1_result,
+                    stage2_result=stage2_result,
+                    stage1_enabled=stage1_config.enabled,
+                    stage2_enabled=stage2_config.enabled,
+                )
 
-            # Step 6: Update tags (skip in dry-run mode)
-            if not dry_run:
-                tags_updated = await self._update_tags(document_id, success=success)
+                # Step 6: Update tags (skip in dry-run mode)
+                if not dry_run:
+                    tags_updated = await self._update_tags(document_id, success=success)
 
-            processing_time = time.monotonic() - start_time
-            self._logger.info(
-                "pipeline_completed",
-                document_id=document_id,
-                success=success,
-                processing_time_seconds=processing_time,
-            )
+                processing_time = time.monotonic() - start_time
+                self._logger.info(
+                    "pipeline_completed",
+                    document_id=document_id,
+                    success=success,
+                    processing_time_seconds=processing_time,
+                )
 
-            return PipelineResult(
-                document_id=document_id,
-                success=success,
-                stage1_result=stage1_result,
-                stage2_result=stage2_result,
-                stage1_skipped_by_config=not stage1_config.enabled,
-                stage2_skipped_by_config=not stage2_config.enabled,
-                tags_updated=tags_updated,
-                content_updated=content_updated,
-                document_uploaded=False,
-                dry_run=dry_run,
-                processing_time_seconds=processing_time,
-            )
+                result = PipelineResult(
+                    document_id=document_id,
+                    success=success,
+                    stage1_result=stage1_result,
+                    stage2_result=stage2_result,
+                    stage1_skipped_by_config=not stage1_config.enabled,
+                    stage2_skipped_by_config=not stage2_config.enabled,
+                    tags_updated=tags_updated,
+                    content_updated=content_updated,
+                    document_uploaded=False,
+                    dry_run=dry_run,
+                    processing_time_seconds=processing_time,
+                )
+
+                # Step 7: Invoke callback while temp files exist
+                if before_cleanup is not None:
+                    await before_cleanup(result)
+
+                return result
 
         except Exception as exc:
             processing_time = time.monotonic() - start_time
@@ -284,6 +299,7 @@ class PipelineOrchestrator:
         output_path: Path,
         *,
         force: bool,
+        pdf_properties: PdfProperties | None = None,
     ) -> Stage1Result:
         """Run Stage 1 OCR processing.
 
@@ -291,6 +307,8 @@ class PipelineOrchestrator:
             input_path: Path to input PDF.
             output_path: Path for OCR'd output PDF.
             force: If True, force OCR regardless of born-digital status.
+            pdf_properties: Detected archive PDF properties for
+                format matching.
 
         Returns:
             Stage1Result with processing outcome.
@@ -299,7 +317,15 @@ class PipelineOrchestrator:
             config=self._settings.pipeline.stage1,
             gpu_mode=self._settings.gpu.enabled,
         )
-        return await processor.process(input_path, output_path, force=force)
+        return await processor.process(
+            input_path,
+            output_path,
+            force=force,
+            output_type=(pdf_properties.output_type if pdf_properties else None),
+            color_conversion_strategy=(
+                pdf_properties.color_conversion_strategy if pdf_properties else None
+            ),
+        )
 
     async def _run_stage2(
         self,
@@ -412,6 +438,53 @@ class PipelineOrchestrator:
             )
             return True
 
+    async def _detect_archive_properties(
+        self,
+        document_id: int,
+        tmp_path: Path,
+    ) -> PdfProperties | None:
+        """Detect PDF/A level and color space from the archive PDF.
+
+        Tries to read the archive from the shared filesystem first
+        (if ``archive_dir`` is configured), then falls back to
+        downloading via the API.
+
+        Args:
+            document_id: The document ID.
+            tmp_path: Temp directory for downloading the archive.
+
+        Returns:
+            Detected properties, or ``None`` if detection fails.
+        """
+        archive_path: Path | None = None
+        archive_dir = self._settings.paperless.archive_dir
+
+        try:
+            # Try shared filesystem first
+            if archive_dir is not None:
+                filename = await self._client.get_archive_filename(document_id)
+                if filename:
+                    candidate = archive_dir / filename
+                    if candidate.exists():
+                        archive_path = candidate
+
+            # Fall back to downloading archive via API
+            if archive_path is None:
+                archive_path = tmp_path / "archive_detect.pdf"
+                await self._client.download_document_to_path(
+                    document_id,
+                    archive_path,
+                    original=False,
+                )
+
+            return detect_pdf_properties(archive_path)
+        except Exception:  # noqa: BLE001
+            self._logger.debug(
+                "archive_property_detection_failed",
+                document_id=document_id,
+            )
+            return None
+
     def _determine_stage2_input(
         self,
         original_path: Path,
@@ -476,6 +549,7 @@ async def process_document(
     client: PaperlessClient,
     force: bool = False,
     dry_run: bool = False,
+    before_cleanup: (Callable[[PipelineResult], Awaitable[None]] | None) = None,
 ) -> PipelineResult:
     """Convenience function to process a document through the full pipeline.
 
@@ -488,6 +562,8 @@ async def process_document(
         force: If True, force processing regardless of born-digital status.
         dry_run: If True, run stages but skip content updates and
             tag changes in paperless-ngx (preview mode).
+        before_cleanup: Optional async callback invoked with the
+            ``PipelineResult`` while temporary files still exist.
 
     Returns:
         PipelineResult with the processing outcome.
@@ -510,4 +586,9 @@ async def process_document(
         ```
     """
     orchestrator = PipelineOrchestrator(settings=settings, client=client)
-    return await orchestrator.process(document_id, force=force, dry_run=dry_run)
+    return await orchestrator.process(
+        document_id,
+        force=force,
+        dry_run=dry_run,
+        before_cleanup=before_cleanup,
+    )

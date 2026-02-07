@@ -80,9 +80,9 @@ pipeline:
       use_llm: false
       # LLM configuration (only used if use_llm is true)
       llm:
-        provider: "openai"  # "openai", "anthropic", or "ollama"
-        model: "gpt-4o-mini"
-        api_key: "${OPENAI_API_KEY}"
+        provider: "ollama"  # "ollama", "openai", or "anthropic"
+        model: "granite3.2-vision:2b"
+        # api_key: "${OPENAI_API_KEY}"  # Only needed for openai/anthropic
 
 # ---------------------------------------------------------------------------
 # Integration mode configuration

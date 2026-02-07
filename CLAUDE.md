@@ -18,8 +18,9 @@ mise install                   # Install Python 3.12 + uv + jq
 uv sync --all-extras           # Install all dependencies including dev
 
 # Running the application
-mise run serve                 # Start web server with workers (via mise task)
-uv run smart-ocr serve         # Start web server with workers (directly)
+mise run dev                   # Start web server with hot reload (via mise task)
+uv run smart-ocr serve         # Start web server (directly)
+uv run smart-ocr serve --reload  # Start with hot reload for development
 
 # Testing
 uv run pytest                              # Run all tests
@@ -55,25 +56,19 @@ Each stage can be independently enabled/disabled via configuration. The `Pipelin
 - **Tag-based workflow**: Documents tracked via tags (smart-ocr:pending, :completed, :failed, :skip). The orchestrator manages tag transitions.
 - **Content modes**: Stage 2 supports REPLACE (overwrite) or APPEND (preserve existing content) modes when patching the paperless-ngx content field.
 - **Lazy imports in route handlers**: Pipeline modules (`process_document`, `PipelineOrchestrator`) are imported inside endpoint functions to avoid loading heavy ML models at import time. These trigger PLC0415 lint warnings which are suppressed with `# noqa: PLC0415`.
-- **Known limitation**: The paperless-ngx API has no endpoint for replacing a document's file in-place, so OCR'd PDFs are only used within the pipeline run (not re-uploaded).
+- **Archive PDF replacement**: The paperless-ngx API has no endpoint for replacing a document's file in-place. The `archive.py` module works around this by writing directly to the shared filesystem mount and updating the database checksum via asyncpg. This requires the paperless-ngx archive directory to be mounted and a PostgreSQL connection URL configured.
 
 ### Web Application
 
-The FastAPI app (`web/app.py`) uses an application factory pattern (`create_app`). The lifespan context manager auto-creates and manages `JobQueue` and `PaperlessClient` on `app.state`. Routes access dependencies via `request.app.state.*`.
+The FastAPI app (`web/app.py`) uses an application factory pattern (`create_app`). The lifespan context manager auto-creates and manages `JobQueue`, `PaperlessClient`, and `PreviewStore` on `app.state`. Routes access dependencies via `request.app.state.*`.
 
-**API Endpoints (9 total across 3 routers):**
+**Authentication** (`web/auth.py`): Cookie-based per-user auth using paperless-ngx API tokens. `AuthMiddleware` checks for a `smartocr_token` cookie on every request (exempt: `/login`, `/logout`, `/api/health`, `/api/ready`, `/static/*`). The `get_user_client` FastAPI dependency creates a per-request `PaperlessClient` from the cookie token. Background jobs use `make_job_coroutine`/`make_preview_job_coroutine` which create their own client internally (safe to outlive the HTTP request).
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/health` | Liveness probe (status + version) |
-| `GET /api/ready` | Readiness probe (job queue + paperless connectivity) |
-| `GET /api/documents` | List documents with filtering (pagination, tags, query) |
-| `GET /api/documents/{id}` | Get single document |
-| `POST /api/documents/{id}/process` | Submit for background processing (returns 202) |
-| `POST /api/documents/{id}/dry-run` | Synchronous preview (no side effects) |
-| `GET /api/jobs` | List jobs with filtering (status, document_id, limit) |
-| `GET /api/jobs/{id}` | Get job status |
-| `POST /api/jobs/{id}/cancel` | Cancel pending/running job |
+**Routers** (4 total: `health`, `documents`, `jobs`, `auth`) plus `views` for htmx pages. View routes serve full pages or htmx partials based on the `HX-Request` header.
+
+**Preview/apply workflow**: The two-step flow uses `PreviewStore` (`web/preview_store.py`) to cache dry-run results between preview and apply. Preview runs the pipeline in `dry_run=True` mode with a `before_cleanup` callback that captures OCR'd PDF bytes and markdown before temp files are deleted. Apply reads from the store to update paperless-ngx content and/or replace the archive PDF.
+
+**Bulk operations**: Bulk preview submits multiple dry-run jobs to the queue, tracked via `BulkPreviewBatch` in the preview store. The review table polls for batch status. Bulk apply iterates all successful previews.
 
 **Exception handlers** map domain errors to HTTP status codes:
 - `PaperlessNotFoundError` → 404, `PaperlessValidationError` → 400
@@ -98,14 +93,19 @@ The UI uses Jinja2 templates with htmx for dynamic interactions and Tailwind CSS
 **htmx patterns**:
 - Document list pagination: `hx-get` targeting `#document-table` with `hx-push-url="true"`
 - Job auto-poll: `hx-get="/jobs/{id}" hx-trigger="every 2s"` on non-terminal job cards
-- Process/dry-run forms: `hx-post` returning partial templates into `#result-area`
+- Preview modal: `hx-post="/documents/{id}/preview"` → modal with markdown diff + OCR'd PDF viewer
+- Bulk review polling: `hx-get="/documents/bulk-review/{batch_id}" hx-trigger="every 2s"` → updated review rows
+- Apply forms: `hx-post` with checkboxes for `replace_pdf` / `replace_content` → apply_result partial
 
 ### Not Yet Implemented
 
-- **CLI commands**: Only `serve` works; `process`, `config`, `post-consume` are stubs
-- **Integration patterns**: Polling, webhook, and post-consume handlers not yet built
-- **Observability**: Prometheus metrics and OpenTelemetry tracing modules not yet implemented
+- **CLI commands**: Only `serve` works; `process`, `config`, `post-consume` are stubs in `cli/__init__.py`
+- **Integration patterns**: Polling (`workers/polling.py`), webhook (`workers/webhook.py`), and post-consume (`workers/post_consume.py`) handlers not yet built
+- **Observability**: Prometheus metrics (`observability/metrics.py`) and OpenTelemetry tracing (`observability/tracing.py`) not yet implemented
 - **Integration tests**: Directory exists but no tests yet; no test PDF fixtures
+- **Docker**: `docker/` directory is a placeholder
+- **Documentation**: `docs/` directory is a placeholder; no `mkdocs.yml`
+- **CI/CD**: No `.github/workflows/` directory yet
 
 ## Code Style
 
@@ -189,8 +189,9 @@ async with JobQueue(workers=4, timeout=600) as queue:
 from paperless_ngx_smart_ocr.web import create_app
 
 app = create_app(settings=settings)
-# Lifespan auto-manages JobQueue and PaperlessClient on app.state
-# Access in routes via request.app.state.job_queue, request.app.state.client
+# Lifespan auto-manages JobQueue, PaperlessClient, PreviewStore on app.state
+# Access in routes via request.app.state.job_queue, request.app.state.client,
+# request.app.state.preview_store
 ```
 
 ## Design Principles

@@ -2,6 +2,8 @@
 
 {% block title %}Document {{ document.id }}{% endblock %}
 
+{% block main_class %}{% endblock %}
+
 {% block content %}
 <div class="space-y-6 pb-20">
   <!-- Header -->
@@ -123,7 +125,7 @@
       <h2 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">PDF Preview</h2>
       <iframe src="/documents/{{ document.id }}/pdf"
               class="w-full rounded border border-gray-200 dark:border-gray-700"
-              style="height: 600px;"
+              style="height: 1200px;"
               title="PDF Preview for {{ document.title }}"></iframe>
     </div>
 
@@ -131,7 +133,7 @@
     <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
       <h2 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">Content</h2>
       {% if document.content %}
-      <pre class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words overflow-y-auto" style="max-height: 600px;">{{ document.content }}</pre>
+      <pre class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words overflow-y-auto" style="max-height: 1200px;">{{ document.content }}</pre>
       {% else %}
       <p class="text-sm text-gray-400 dark:text-gray-500 italic">No content available.</p>
       {% endif %}
@@ -159,24 +161,22 @@
     </div>
     <div class="flex items-center space-x-3">
       <label class="flex items-center space-x-2 text-sm">
-        <input type="checkbox" name="force" value="true"
+        <input type="checkbox" name="use_llm" value="true"{% if llm_enabled %} checked{% endif %}
                class="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500">
-        <span class="text-gray-700 dark:text-gray-300">Force</span>
+        <span class="text-gray-700 dark:text-gray-300">Use LLM</span>
       </label>
       <button type="button"
-              hx-post="/documents/{{ document.id }}/dry-run"
-              hx-target="#result-area"
+              id="process-btn"
+              hx-post="/documents/{{ document.id }}/preview"
+              hx-target="#modal-container"
               hx-swap="innerHTML"
-              hx-include="[name='force']"
-              class="px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-        Dry Run
-      </button>
-      <button type="button"
-              hx-post="/documents/{{ document.id }}/process"
-              hx-target="#result-area"
-              hx-swap="innerHTML"
-              hx-include="[name='force']"
-              class="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+              hx-include="[name='use_llm']"
+              hx-indicator="#process-spinner"
+              class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <svg id="process-spinner" class="htmx-indicator animate-spin -ml-0.5 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
         Process
       </button>
     </div>

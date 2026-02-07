@@ -32,7 +32,7 @@ from paperless_ngx_smart_ocr.workers import (
 @pytest.fixture
 async def queue() -> AsyncGenerator[JobQueue, None]:
     """Create a test job queue."""
-    async with JobQueue(workers=2, timeout=5.0) as q:
+    async with JobQueue(workers=2, timeout=0.5) as q:
         yield q
 
 
@@ -165,7 +165,7 @@ class TestJobQueueLifecycle:
     async def test_properties(self, queue: JobQueue) -> None:
         """Test queue properties."""
         assert queue.workers == 2
-        assert queue.timeout == 5.0
+        assert queue.timeout == 0.5
         assert queue.active_count == 0
         assert queue.pending_count == 0
 

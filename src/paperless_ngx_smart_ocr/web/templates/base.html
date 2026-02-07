@@ -17,7 +17,7 @@
   </script>
 
   <!-- Tailwind CSS (CDN for development; replace with built CSS for production) -->
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
   <script>
     tailwind.config = {
       darkMode: "class",
@@ -83,7 +83,7 @@
   </nav>
 
   <!-- Main content -->
-  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+  <main class="flex-1 {% block main_class %}max-w-7xl{% endblock %} w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
     {% block content %}{% endblock %}
   </main>
 
@@ -95,6 +95,9 @@
       </p>
     </div>
   </footer>
+
+  <!-- Modal container (filled by htmx) -->
+  <div id="modal-container"></div>
 
   <script src="/static/js/app.js"></script>
   {% block scripts %}{% endblock %}

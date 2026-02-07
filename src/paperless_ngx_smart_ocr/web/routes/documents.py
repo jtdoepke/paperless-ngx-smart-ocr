@@ -103,7 +103,6 @@ async def get_document(
 async def process_document_endpoint(
     request: Request,
     document_id: int,
-    force: bool = Query(default=False),  # noqa: FBT001
 ) -> JSONResponse:
     """Submit a document for background processing.
 
@@ -114,7 +113,6 @@ async def process_document_endpoint(
     Args:
         request: The incoming HTTP request.
         document_id: The paperless-ngx document ID.
-        force: Force processing regardless of born-digital status.
 
     Returns:
         202 Accepted with job details.
@@ -127,7 +125,6 @@ async def process_document_endpoint(
         settings=settings,
         base_url=settings.paperless.url,
         token=request.state.paperless_token,
-        force=force,
     )
     job = await job_queue.submit(
         coro,
@@ -141,7 +138,6 @@ async def process_document_endpoint(
 async def dry_run_document(
     request: Request,
     document_id: int,
-    force: bool = Query(default=False),  # noqa: FBT001
     client: PaperlessClient = Depends(get_user_client),  # noqa: B008
 ) -> dict[str, Any]:
     """Run a dry-run preview of document processing.
@@ -153,7 +149,6 @@ async def dry_run_document(
     Args:
         request: The incoming HTTP request.
         document_id: The paperless-ngx document ID.
-        force: Force processing regardless of born-digital status.
         client: Per-request PaperlessClient from user cookie.
 
     Returns:
@@ -171,7 +166,7 @@ async def dry_run_document(
     )
     result = await orchestrator.process(
         document_id,
-        force=force,
+        force=True,
         dry_run=True,
     )
     return result.to_dict()

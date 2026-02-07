@@ -312,7 +312,6 @@ class TestMakeJobCoroutine:
                 settings=settings,
                 base_url="http://localhost:8000",
                 token="user-token",
-                force=True,
             )
             result = await coro
 

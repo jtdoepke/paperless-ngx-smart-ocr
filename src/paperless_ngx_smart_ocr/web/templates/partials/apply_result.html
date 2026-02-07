@@ -1,0 +1,72 @@
+<!-- Apply result modal overlay -->
+<div id="preview-modal-backdrop"
+     class="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4"
+     onclick="if(event.target===this)window.closeModal()">
+  <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6">
+
+    <!-- Status icon -->
+    <div class="flex justify-center mb-4">
+      {% if success %}
+      <div class="w-12 h-12 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+        <svg class="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+        </svg>
+      </div>
+      {% else %}
+      <div class="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+        <svg class="w-6 h-6 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Title -->
+    <h3 class="text-center text-lg font-semibold text-gray-900 dark:text-white mb-2">
+      {% if success %}Changes Applied{% else %}Apply Failed{% endif %}
+    </h3>
+
+    {% if error %}
+    <p class="text-center text-sm text-red-600 dark:text-red-400 mb-4">{{ error }}</p>
+    {% endif %}
+
+    <!-- What was applied -->
+    {% if success %}
+    <div class="space-y-2 mb-4">
+      {% if pdf_replaced %}
+      <div class="flex items-center space-x-2 text-sm text-gray-700 dark:text-gray-300">
+        <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+        </svg>
+        <span>Archive PDF replaced</span>
+      </div>
+      {% endif %}
+      {% if content_replaced %}
+      <div class="flex items-center space-x-2 text-sm text-gray-700 dark:text-gray-300">
+        <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+        </svg>
+        <span>Content updated</span>
+      </div>
+      {% endif %}
+      {% if tags_updated %}
+      <div class="flex items-center space-x-2 text-sm text-gray-700 dark:text-gray-300">
+        <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+        </svg>
+        <span>Tags updated</span>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Close button -->
+    <div class="flex justify-center">
+      <button type="button" onclick="window.closeModal()"
+              class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 rounded-md">
+        Close
+      </button>
+    </div>
+
+  </div>
+</div>
