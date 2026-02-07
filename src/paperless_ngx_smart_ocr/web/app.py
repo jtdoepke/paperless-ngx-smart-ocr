@@ -49,7 +49,7 @@ __all__ = [
     "create_app",
     "get_app_settings",
     "get_job_queue",
-    "get_paperless_client",
+    "get_service_client",
 ]
 
 
@@ -103,12 +103,12 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     await job_queue.start()
     app.state.job_queue = job_queue
 
-    # Create paperless client (lazy-initialised on first API call)
-    client = _PaperlessClient(
+    # Create service client for health/readiness probes
+    service_client = _PaperlessClient(
         base_url=settings.paperless.url,
         token=settings.paperless.token or "",
     )
-    app.state.client = client
+    app.state.service_client = service_client
 
     logger.info(
         "app_started",
@@ -122,7 +122,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("app_shutting_down")
 
     await job_queue.stop()
-    await client.close()
+    await service_client.close()
 
     logger.info("app_shutdown_complete")
 
@@ -167,7 +167,12 @@ def _configure_middleware(app: FastAPI) -> None:
     Args:
         app: The FastAPI application.
     """
-    # Inner layer - CORS
+    from paperless_ngx_smart_ocr.web.auth import AuthMiddleware
+
+    # Innermost layer - Auth (checks cookie, sets request.state)
+    app.add_middleware(AuthMiddleware)
+
+    # Middle layer - CORS
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -198,9 +203,11 @@ def _paperless_error_status(exc: PaperlessError) -> int:
         return 404
     if isinstance(exc, PaperlessValidationError):
         return 400
+    if isinstance(exc, PaperlessAuthenticationError):
+        return 401
     if isinstance(
         exc,
-        PaperlessAuthenticationError | PaperlessConnectionError | PaperlessServerError,
+        PaperlessConnectionError | PaperlessServerError,
     ):
         return 502
     if isinstance(exc, PaperlessRateLimitError):
@@ -338,6 +345,9 @@ def _include_routers(app: FastAPI) -> None:
     Args:
         app: The FastAPI application.
     """
+    from paperless_ngx_smart_ocr.web.routes.auth import (
+        router as auth_router,
+    )
     from paperless_ngx_smart_ocr.web.routes.documents import (
         router as documents_router,
     )
@@ -351,6 +361,7 @@ def _include_routers(app: FastAPI) -> None:
         router as views_router,
     )
 
+    app.include_router(auth_router)
     app.include_router(health_router)
     app.include_router(documents_router)
     app.include_router(jobs_router)
@@ -386,16 +397,19 @@ def get_job_queue(request: Request) -> JobQueue:
     return request.app.state.job_queue  # type: ignore[no-any-return]
 
 
-def get_paperless_client(request: Request) -> PaperlessClient:
-    """FastAPI dependency: get the paperless client.
+def get_service_client(request: Request) -> PaperlessClient:
+    """FastAPI dependency: get the service-level paperless client.
+
+    This client uses the server-configured token and is intended
+    only for health/readiness probes.
 
     Args:
         request: The incoming HTTP request.
 
     Returns:
-        The PaperlessClient instance.
+        The service PaperlessClient instance.
     """
-    return request.app.state.client  # type: ignore[no-any-return]
+    return request.app.state.service_client  # type: ignore[no-any-return]
 
 
 # -------------------------------------------------------------------

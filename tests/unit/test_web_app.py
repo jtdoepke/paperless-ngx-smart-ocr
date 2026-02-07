@@ -15,6 +15,7 @@ from paperless_ngx_smart_ocr.paperless.exceptions import (
     PaperlessNotFoundError,
 )
 from paperless_ngx_smart_ocr.web import create_app
+from paperless_ngx_smart_ocr.web.auth import AUTH_COOKIE_NAME
 from paperless_ngx_smart_ocr.workers.exceptions import JobNotFoundError
 
 
@@ -287,6 +288,7 @@ class TestExceptionHandlers:
             test_app,
             raise_server_exceptions=False,
         ) as c:
+            c.cookies.set(AUTH_COOKIE_NAME, "test-token")
             response = c.get("/test-paperless-error")
             assert response.status_code == 502
             data = response.json()
@@ -309,6 +311,7 @@ class TestExceptionHandlers:
             test_app,
             raise_server_exceptions=False,
         ) as c:
+            c.cookies.set(AUTH_COOKIE_NAME, "test-token")
             response = c.get("/test-not-found")
             assert response.status_code == 404
 
@@ -327,6 +330,7 @@ class TestExceptionHandlers:
             test_app,
             raise_server_exceptions=False,
         ) as c:
+            c.cookies.set(AUTH_COOKIE_NAME, "test-token")
             response = c.get("/test-job-not-found")
             assert response.status_code == 404
             data = response.json()
@@ -347,6 +351,7 @@ class TestExceptionHandlers:
             test_app,
             raise_server_exceptions=False,
         ) as c:
+            c.cookies.set(AUTH_COOKIE_NAME, "test-token")
             response = c.get("/test-generic-error")
             assert response.status_code == 500
             data = response.json()

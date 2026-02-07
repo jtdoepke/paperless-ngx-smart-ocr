@@ -5,11 +5,15 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, Form, Path, Query, Request
+from fastapi import APIRouter, Depends, Form, Path, Query, Request
 from fastapi.responses import HTMLResponse
 
 from paperless_ngx_smart_ocr.paperless.exceptions import (
     PaperlessNotFoundError,
+)
+from paperless_ngx_smart_ocr.web.auth import (
+    get_user_client,
+    make_job_coroutine,
 )
 from paperless_ngx_smart_ocr.workers.exceptions import (
     JobAlreadyCancelledError,
@@ -107,16 +111,19 @@ def _render(
 
 
 @router.get("/", response_class=HTMLResponse)
-async def index(request: Request) -> Response:
+async def index(
+    request: Request,
+    client: PaperlessClient = Depends(get_user_client),  # noqa: B008
+) -> Response:
     """Render the dashboard home page.
 
     Args:
         request: The incoming HTTP request.
+        client: Per-request PaperlessClient from user cookie.
 
     Returns:
         Rendered index page.
     """
-    client: PaperlessClient = request.app.state.client
     try:
         ready = await client.health_check()
     except Exception:  # noqa: BLE001
@@ -151,6 +158,7 @@ def _parse_int_list(value: str | None) -> list[int] | None:
 @router.get("/documents", response_class=HTMLResponse)
 async def document_list(  # noqa: PLR0913
     request: Request,
+    client: PaperlessClient = Depends(get_user_client),  # noqa: B008
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=100),
     query: str | None = Query(default=None),
@@ -168,6 +176,7 @@ async def document_list(  # noqa: PLR0913
 
     Args:
         request: The incoming HTTP request.
+        client: Per-request PaperlessClient from user cookie.
         page: Page number (1-indexed).
         page_size: Number of results per page.
         query: Full-text search query.
@@ -184,8 +193,6 @@ async def document_list(  # noqa: PLR0913
     Returns:
         Full page or htmx partial with document table.
     """
-    client: PaperlessClient = request.app.state.client
-
     result = await client.list_documents(
         page=page,
         page_size=page_size,
@@ -266,6 +273,7 @@ async def document_list(  # noqa: PLR0913
 async def document_detail(
     request: Request,
     document_id: int = Path(...),
+    client: PaperlessClient = Depends(get_user_client),  # noqa: B008
 ) -> Response:
     """Render the document detail page.
 
@@ -275,11 +283,11 @@ async def document_detail(
     Args:
         request: The incoming HTTP request.
         document_id: The paperless-ngx document ID.
+        client: Per-request PaperlessClient from user cookie.
 
     Returns:
         Rendered document detail page.
     """
-    client: PaperlessClient = request.app.state.client
     settings: Settings = request.app.state.settings
 
     try:
@@ -371,8 +379,9 @@ async def document_detail(
 
 @router.get("/documents/{document_id}/pdf")
 async def document_pdf_proxy(
-    request: Request,
+    _request: Request,
     document_id: int = Path(...),
+    client: PaperlessClient = Depends(get_user_client),  # noqa: B008
 ) -> Response:
     """Proxy PDF download from paperless-ngx.
 
@@ -381,8 +390,9 @@ async def document_pdf_proxy(
     auth token.
 
     Args:
-        request: The incoming HTTP request.
+        _request: The incoming HTTP request (unused).
         document_id: The paperless-ngx document ID.
+        client: Per-request PaperlessClient from user cookie.
 
     Returns:
         Streaming PDF response.
@@ -390,8 +400,6 @@ async def document_pdf_proxy(
     from starlette.responses import (
         StreamingResponse,
     )
-
-    client: PaperlessClient = request.app.state.client
 
     async def _stream() -> AsyncIterator[bytes]:
         async with client.download_document(
@@ -432,18 +440,14 @@ async def process_document_view(
     Returns:
         Job card partial.
     """
-    from paperless_ngx_smart_ocr.pipeline.orchestrator import (
-        process_document,
-    )
-
     settings: Settings = request.app.state.settings
-    client: PaperlessClient = request.app.state.client
     job_queue: JobQueue = request.app.state.job_queue
 
-    coro = process_document(
+    coro = make_job_coroutine(
         document_id,
         settings=settings,
-        client=client,
+        base_url=settings.paperless.url,
+        token=request.state.paperless_token,
         force=force,
     )
     job = await job_queue.submit(
@@ -467,6 +471,7 @@ async def dry_run_view(
     request: Request,
     document_id: int = Path(...),
     force: bool = Form(default=False),  # noqa: FBT001
+    client: PaperlessClient = Depends(get_user_client),  # noqa: B008
 ) -> Response:
     """Run a dry-run preview of document processing (UI).
 
@@ -476,6 +481,7 @@ async def dry_run_view(
         request: The incoming HTTP request.
         document_id: The paperless-ngx document ID.
         force: Force processing regardless of born-digital status.
+        client: Per-request PaperlessClient from user cookie.
 
     Returns:
         Process result partial.
@@ -485,7 +491,6 @@ async def dry_run_view(
     )
 
     settings: Settings = request.app.state.settings
-    client: PaperlessClient = request.app.state.client
 
     orchestrator = PipelineOrchestrator(
         settings=settings,
@@ -513,6 +518,7 @@ async def bulk_process_view(
     document_ids: str = Form(default=""),
     filter_query: str = Form(default=""),
     force: bool = Form(default=False),  # noqa: FBT001
+    client: PaperlessClient = Depends(get_user_client),  # noqa: B008
 ) -> Response:
     """Submit multiple documents for background processing (UI).
 
@@ -524,16 +530,12 @@ async def bulk_process_view(
         document_ids: Comma-separated document IDs.
         filter_query: URL filter query string for "all matching" mode.
         force: Force processing regardless of born-digital status.
+        client: Per-request PaperlessClient from user cookie.
 
     Returns:
         Bulk jobs partial with one job card per document.
     """
-    from paperless_ngx_smart_ocr.pipeline.orchestrator import (
-        process_document,
-    )
-
     settings: Settings = request.app.state.settings
-    client: PaperlessClient = request.app.state.client
     job_queue: JobQueue = request.app.state.job_queue
 
     doc_ids = [int(x.strip()) for x in document_ids.split(",") if x.strip()]
@@ -546,10 +548,11 @@ async def bulk_process_view(
 
     jobs = []
     for doc_id in doc_ids:
-        coro = process_document(
+        coro = make_job_coroutine(
             doc_id,
             settings=settings,
-            client=client,
+            base_url=settings.paperless.url,
+            token=request.state.paperless_token,
             force=force,
         )
         job = await job_queue.submit(

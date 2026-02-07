@@ -347,7 +347,7 @@ class TestSettingsLoading:
         settings = load_settings(sample_config_yaml)
 
         assert settings.paperless.url == "http://test-paperless:8000"
-        assert settings.paperless.token == "test-token-12345"  # noqa: S105
+        assert settings.paperless.token == "test-token-12345"
         assert settings.tags.prefix == "test-ocr"
         born_digital = settings.pipeline.stage1.born_digital_handling
         assert born_digital == BornDigitalHandling.FORCE
@@ -395,7 +395,7 @@ class TestEnvironmentVariableInterpolation:
         settings = load_settings(config_with_interpolation)
 
         assert settings.paperless.url == "http://env-paperless:9000"
-        assert settings.paperless.token == "env-token-xyz"  # noqa: S105
+        assert settings.paperless.token == "env-token-xyz"
 
     def test_interpolation_with_default(
         self,
@@ -411,7 +411,7 @@ class TestEnvironmentVariableInterpolation:
         settings = load_settings(config_with_interpolation)
 
         assert settings.paperless.url == "http://default:8000"
-        assert settings.paperless.token == "env-token-xyz"  # noqa: S105
+        assert settings.paperless.token == "env-token-xyz"
 
     def test_interpolation_empty_when_missing(
         self,
@@ -441,7 +441,7 @@ class TestTokenFileResolution:
         config_file, _ = config_with_token_file
         settings = load_settings(config_file)
 
-        assert settings.paperless.token == "secret-token-from-file"  # noqa: S105
+        assert settings.paperless.token == "secret-token-from-file"
 
     def test_token_file_not_found(self, tmp_path: Path) -> None:
         """Test error when token_file doesn't exist."""
@@ -469,7 +469,7 @@ paperless:
 """)
 
         settings = load_settings(config_file)
-        assert settings.paperless.token == "direct-token"  # noqa: S105
+        assert settings.paperless.token == "direct-token"
 
     def test_paperless_token_env_fallback(
         self,
@@ -479,7 +479,7 @@ paperless:
         monkeypatch.setenv("PAPERLESS_TOKEN", "env-fallback-token")
 
         settings = load_settings()
-        assert settings.paperless.token == "env-fallback-token"  # noqa: S105
+        assert settings.paperless.token == "env-fallback-token"
 
 
 class TestEnvironmentVariableOverrides:

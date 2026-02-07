@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from paperless_ngx_smart_ocr.config import Settings
 from paperless_ngx_smart_ocr.web import create_app
+from paperless_ngx_smart_ocr.web.auth import AUTH_COOKIE_NAME
 from paperless_ngx_smart_ocr.workers.exceptions import (
     JobAlreadyCancelledError,
     JobNotFoundError,
@@ -106,6 +107,7 @@ def test_app() -> Generator[FastAPI, None, None]:
 def client(test_app: FastAPI) -> Generator[TestClient, None, None]:
     """Create a test client with lifespan management."""
     with TestClient(test_app) as c:
+        c.cookies.set(AUTH_COOKIE_NAME, "test-token")
         yield c
 
 

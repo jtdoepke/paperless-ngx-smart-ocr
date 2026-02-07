@@ -4,8 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
+
+from paperless_ngx_smart_ocr.web.auth import (
+    get_user_client,
+    make_job_coroutine,
+)
 
 
 if TYPE_CHECKING:
@@ -38,7 +43,8 @@ def _parse_tag_ids(value: str | None) -> list[int] | None:
 
 @router.get("/documents")
 async def list_documents(  # noqa: PLR0913
-    request: Request,
+    _request: Request,
+    client: PaperlessClient = Depends(get_user_client),  # noqa: B008
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=100),
     query: str | None = Query(default=None),
@@ -50,6 +56,7 @@ async def list_documents(  # noqa: PLR0913
 
     Args:
         request: The incoming HTTP request.
+        client: Per-request PaperlessClient from user cookie.
         page: Page number (1-indexed).
         page_size: Number of results per page.
         query: Full-text search query.
@@ -60,7 +67,6 @@ async def list_documents(  # noqa: PLR0913
     Returns:
         Paginated document list.
     """
-    client: PaperlessClient = request.app.state.client
     result = await client.list_documents(
         page=page,
         page_size=page_size,
@@ -75,19 +81,20 @@ async def list_documents(  # noqa: PLR0913
 
 @router.get("/documents/{document_id}")
 async def get_document(
-    request: Request,
+    _request: Request,
     document_id: int,
+    client: PaperlessClient = Depends(get_user_client),  # noqa: B008
 ) -> dict[str, Any]:
     """Get a single document from paperless-ngx.
 
     Args:
-        request: The incoming HTTP request.
+        _request: The incoming HTTP request (unused).
         document_id: The paperless-ngx document ID.
+        client: Per-request PaperlessClient from user cookie.
 
     Returns:
         Document detail.
     """
-    client: PaperlessClient = request.app.state.client
     doc = await client.get_document(document_id)
     return doc.model_dump(mode="json")
 
@@ -112,18 +119,14 @@ async def process_document_endpoint(
     Returns:
         202 Accepted with job details.
     """
-    from paperless_ngx_smart_ocr.pipeline.orchestrator import (
-        process_document,
-    )
-
     settings: Settings = request.app.state.settings
-    client: PaperlessClient = request.app.state.client
     job_queue: JobQueue = request.app.state.job_queue
 
-    coro = process_document(
+    coro = make_job_coroutine(
         document_id,
         settings=settings,
-        client=client,
+        base_url=settings.paperless.url,
+        token=request.state.paperless_token,
         force=force,
     )
     job = await job_queue.submit(
@@ -139,6 +142,7 @@ async def dry_run_document(
     request: Request,
     document_id: int,
     force: bool = Query(default=False),  # noqa: FBT001
+    client: PaperlessClient = Depends(get_user_client),  # noqa: B008
 ) -> dict[str, Any]:
     """Run a dry-run preview of document processing.
 
@@ -150,6 +154,7 @@ async def dry_run_document(
         request: The incoming HTTP request.
         document_id: The paperless-ngx document ID.
         force: Force processing regardless of born-digital status.
+        client: Per-request PaperlessClient from user cookie.
 
     Returns:
         Pipeline result with processing details.
@@ -159,7 +164,6 @@ async def dry_run_document(
     )
 
     settings: Settings = request.app.state.settings
-    client: PaperlessClient = request.app.state.client
 
     orchestrator = PipelineOrchestrator(
         settings=settings,

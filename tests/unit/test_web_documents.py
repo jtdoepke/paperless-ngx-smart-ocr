@@ -19,6 +19,7 @@ from paperless_ngx_smart_ocr.paperless.models import (
     PaginatedResponse,
 )
 from paperless_ngx_smart_ocr.web import create_app
+from paperless_ngx_smart_ocr.web.auth import AUTH_COOKIE_NAME, get_user_client
 
 
 if TYPE_CHECKING:
@@ -141,11 +142,19 @@ def _make_mock_pipeline_result(
 
 
 @pytest.fixture
-def test_app() -> Generator[FastAPI, None, None]:
+def mock_user_client() -> MagicMock:
+    """Create a mock user client for dependency injection."""
+    return _make_mock_client()
+
+
+@pytest.fixture
+def test_app(mock_user_client: MagicMock) -> Generator[FastAPI, None, None]:
     """Create a FastAPI app with mocked dependencies."""
     settings = _make_settings()
     mock_queue = _make_mock_queue()
-    mock_client = _make_mock_client()
+    mock_service_client = MagicMock()
+    mock_service_client.health_check = AsyncMock(return_value=True)
+    mock_service_client.close = AsyncMock()
 
     with (
         patch(
@@ -154,17 +163,24 @@ def test_app() -> Generator[FastAPI, None, None]:
         ),
         patch(
             "paperless_ngx_smart_ocr.paperless.PaperlessClient",
-            return_value=mock_client,
+            return_value=mock_service_client,
         ),
     ):
         app = create_app(settings=settings)
+
+        async def _override() -> MagicMock:  # type: ignore[misc]
+            return mock_user_client
+
+        app.dependency_overrides[get_user_client] = _override
         yield app
+        app.dependency_overrides.clear()
 
 
 @pytest.fixture
 def client(test_app: FastAPI) -> Generator[TestClient, None, None]:
-    """Create a test client with lifespan management."""
+    """Create a test client with lifespan management and auth cookie."""
     with TestClient(test_app) as c:
+        c.cookies.set(AUTH_COOKIE_NAME, "test-token")
         yield c
 
 
@@ -176,10 +192,15 @@ def client(test_app: FastAPI) -> Generator[TestClient, None, None]:
 class TestListDocuments:
     """Tests for GET /api/documents."""
 
-    def test_returns_200(self, test_app: FastAPI, client: TestClient) -> None:
+    def test_returns_200(
+        self,
+        test_app: FastAPI,
+        mock_user_client: MagicMock,
+        client: TestClient,
+    ) -> None:
         """Returns 200 with document list."""
         response_data = _make_paginated_response()
-        test_app.state.client.list_documents = AsyncMock(
+        mock_user_client.list_documents = AsyncMock(
             return_value=response_data,
         )
 
@@ -190,63 +211,84 @@ class TestListDocuments:
         assert len(data["results"]) == 1
         assert data["results"][0]["id"] == 1
 
-    def test_forwards_query_params(self, test_app: FastAPI, client: TestClient) -> None:
+    def test_forwards_query_params(
+        self,
+        test_app: FastAPI,
+        mock_user_client: MagicMock,
+        client: TestClient,
+    ) -> None:
         """Query parameters are forwarded to PaperlessClient."""
-        test_app.state.client.list_documents = AsyncMock(
+        mock_user_client.list_documents = AsyncMock(
             return_value=_make_paginated_response([]),
         )
 
-        client.get("/api/documents?page=2&page_size=10&query=invoice&ordering=-created")
+        client.get(
+            "/api/documents?page=2&page_size=10&query=invoice&ordering=-created",
+        )
 
-        call_kwargs = test_app.state.client.list_documents.call_args.kwargs
+        call_kwargs = mock_user_client.list_documents.call_args.kwargs
         assert call_kwargs["page"] == 2
         assert call_kwargs["page_size"] == 10
         assert call_kwargs["query"] == "invoice"
         assert call_kwargs["ordering"] == "-created"
 
-    def test_parses_tags_include(self, test_app: FastAPI, client: TestClient) -> None:
+    def test_parses_tags_include(
+        self,
+        test_app: FastAPI,
+        mock_user_client: MagicMock,
+        client: TestClient,
+    ) -> None:
         """Comma-separated tags_include is parsed to list[int]."""
-        test_app.state.client.list_documents = AsyncMock(
+        mock_user_client.list_documents = AsyncMock(
             return_value=_make_paginated_response([]),
         )
 
         client.get("/api/documents?tags_include=1,2,3")
 
-        call_kwargs = test_app.state.client.list_documents.call_args.kwargs
+        call_kwargs = mock_user_client.list_documents.call_args.kwargs
         assert call_kwargs["tags_include"] == [1, 2, 3]
 
-    def test_parses_tags_exclude(self, test_app: FastAPI, client: TestClient) -> None:
+    def test_parses_tags_exclude(
+        self,
+        test_app: FastAPI,
+        mock_user_client: MagicMock,
+        client: TestClient,
+    ) -> None:
         """Comma-separated tags_exclude is parsed to list[int]."""
-        test_app.state.client.list_documents = AsyncMock(
+        mock_user_client.list_documents = AsyncMock(
             return_value=_make_paginated_response([]),
         )
 
         client.get("/api/documents?tags_exclude=4,5")
 
-        call_kwargs = test_app.state.client.list_documents.call_args.kwargs
+        call_kwargs = mock_user_client.list_documents.call_args.kwargs
         assert call_kwargs["tags_exclude"] == [4, 5]
 
     def test_tags_none_when_omitted(
-        self, test_app: FastAPI, client: TestClient
+        self,
+        test_app: FastAPI,
+        mock_user_client: MagicMock,
+        client: TestClient,
     ) -> None:
         """Tags are None when not provided."""
-        test_app.state.client.list_documents = AsyncMock(
+        mock_user_client.list_documents = AsyncMock(
             return_value=_make_paginated_response([]),
         )
 
         client.get("/api/documents")
 
-        call_kwargs = test_app.state.client.list_documents.call_args.kwargs
+        call_kwargs = mock_user_client.list_documents.call_args.kwargs
         assert call_kwargs["tags_include"] is None
         assert call_kwargs["tags_exclude"] is None
 
     def test_paperless_error_returns_502(
         self,
         test_app: FastAPI,
+        mock_user_client: MagicMock,
         client: TestClient,
     ) -> None:
         """PaperlessConnectionError returns 502."""
-        test_app.state.client.list_documents = AsyncMock(
+        mock_user_client.list_documents = AsyncMock(
             side_effect=PaperlessConnectionError("refused"),
         )
 
@@ -262,10 +304,15 @@ class TestListDocuments:
 class TestGetDocument:
     """Tests for GET /api/documents/{document_id}."""
 
-    def test_returns_200(self, test_app: FastAPI, client: TestClient) -> None:
+    def test_returns_200(
+        self,
+        test_app: FastAPI,
+        mock_user_client: MagicMock,
+        client: TestClient,
+    ) -> None:
         """Returns 200 with document detail."""
         doc = _make_document(document_id=42)
-        test_app.state.client.get_document = AsyncMock(
+        mock_user_client.get_document = AsyncMock(
             return_value=doc,
         )
 
@@ -278,10 +325,11 @@ class TestGetDocument:
     def test_not_found_returns_404(
         self,
         test_app: FastAPI,
+        mock_user_client: MagicMock,
         client: TestClient,
     ) -> None:
         """Missing document returns 404."""
-        test_app.state.client.get_document = AsyncMock(
+        mock_user_client.get_document = AsyncMock(
             side_effect=PaperlessNotFoundError(
                 resource_type="document",
                 resource_id=999,
@@ -308,7 +356,7 @@ class TestProcessDocument:
         )
 
         with patch(
-            "paperless_ngx_smart_ocr.pipeline.orchestrator.process_document",
+            "paperless_ngx_smart_ocr.web.routes.documents.make_job_coroutine",
         ):
             response = client.post("/api/documents/1/process")
 
@@ -322,7 +370,7 @@ class TestProcessDocument:
         )
 
         with patch(
-            "paperless_ngx_smart_ocr.pipeline.orchestrator.process_document",
+            "paperless_ngx_smart_ocr.web.routes.documents.make_job_coroutine",
         ):
             response = client.post("/api/documents/5/process")
 
@@ -339,7 +387,7 @@ class TestProcessDocument:
         )
 
         with patch(
-            "paperless_ngx_smart_ocr.pipeline.orchestrator.process_document",
+            "paperless_ngx_smart_ocr.web.routes.documents.make_job_coroutine",
         ):
             client.post("/api/documents/7/process")
 
@@ -348,19 +396,19 @@ class TestProcessDocument:
         assert submit_kwargs["document_id"] == 7
 
     def test_force_param(self, test_app: FastAPI, client: TestClient) -> None:
-        """force=true is passed through to process_document."""
+        """force=true is passed through to make_job_coroutine."""
         mock_job = _make_mock_job()
         test_app.state.job_queue.submit = AsyncMock(
             return_value=mock_job,
         )
 
         with patch(
-            "paperless_ngx_smart_ocr.pipeline.orchestrator.process_document",
-        ) as mock_process:
+            "paperless_ngx_smart_ocr.web.routes.documents.make_job_coroutine",
+        ) as mock_make:
             client.post("/api/documents/1/process?force=true")
 
-        mock_process.assert_called_once()
-        call_kwargs = mock_process.call_args.kwargs
+        mock_make.assert_called_once()
+        call_kwargs = mock_make.call_args.kwargs
         assert call_kwargs["force"] is True
 
 

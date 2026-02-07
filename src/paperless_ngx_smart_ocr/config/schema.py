@@ -563,6 +563,10 @@ class WebConfig(ConfigBaseModel):
         Field(ge=1, le=65535, description="Port number"),
     ] = 8080
     theme: ThemeMode = Field(default=ThemeMode.AUTO)
+    cookie_secure: bool = Field(
+        default=False,
+        description="Set Secure flag on auth cookie (requires HTTPS)",
+    )
 
 
 # ---------------------------------------------------------------------------

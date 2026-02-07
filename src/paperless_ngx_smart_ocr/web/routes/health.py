@@ -59,7 +59,7 @@ async def readiness_check(request: Request) -> JSONResponse:
     checks["job_queue"] = job_queue.is_running
 
     # Check paperless-ngx connectivity
-    client: PaperlessClient = request.app.state.client
+    client: PaperlessClient = request.app.state.service_client
     try:
         checks["paperless"] = await client.health_check()
     except Exception:  # noqa: BLE001

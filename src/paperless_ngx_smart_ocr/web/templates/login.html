@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login - Smart OCR</title>
+
+  <script>
+    (function(){
+      var s=localStorage.getItem("smart-ocr-theme");
+      var d=s||(window.matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light");
+      if(d==="dark")document.documentElement.classList.add("dark");
+    })();
+  </script>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: { extend: {} }
+    }
+  </script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 min-h-screen flex items-center justify-center">
+
+  <div class="w-full max-w-sm mx-auto px-4">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8">
+      <h1 class="text-2xl font-semibold text-gray-900 dark:text-white text-center mb-2">
+        Smart OCR
+      </h1>
+      <p class="text-sm text-gray-500 dark:text-gray-400 text-center mb-6">
+        Enter your paperless-ngx API token
+      </p>
+
+      {% if error %}
+      <div class="mb-4 p-3 rounded-md bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800">
+        <p class="text-sm text-red-700 dark:text-red-300">{{ error }}</p>
+      </div>
+      {% endif %}
+
+      <form method="post" action="/login">
+        <label for="token" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          API Token
+        </label>
+        <input
+          type="password"
+          id="token"
+          name="token"
+          required
+          autocomplete="current-password"
+          class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm
+                 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100
+                 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
+                 placeholder-gray-400 dark:placeholder-gray-500"
+          placeholder="your-api-token">
+
+        <button
+          type="submit"
+          class="mt-4 w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium
+                 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
+                 dark:focus:ring-offset-gray-800 transition-colors">
+          Sign In
+        </button>
+      </form>
+    </div>
+  </div>
+
+</body>
+</html>

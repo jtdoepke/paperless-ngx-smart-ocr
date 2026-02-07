@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from paperless_ngx_smart_ocr.web.routes.auth import (
+    router as auth_router,
+)
 from paperless_ngx_smart_ocr.web.routes.documents import (
     router as documents_router,
 )
@@ -17,6 +20,7 @@ from paperless_ngx_smart_ocr.web.routes.views import (
 
 
 __all__ = [
+    "auth_router",
     "documents_router",
     "health_router",
     "jobs_router",
