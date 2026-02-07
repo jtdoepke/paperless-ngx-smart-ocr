@@ -3,7 +3,7 @@
 {% block title %}Document {{ document.id }}{% endblock %}
 
 {% block content %}
-<div class="space-y-6">
+<div class="space-y-6 pb-20">
   <!-- Header -->
   <div class="flex items-start justify-between">
     <div>
@@ -18,164 +18,103 @@
     </a>
   </div>
 
-  <!-- Details + Processing panel -->
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-    <div class="lg:col-span-2 space-y-4">
-      <!-- Details card -->
-      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-        <h2 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">Details</h2>
-        <dl class="grid gap-x-4 gap-y-2 text-sm" style="grid-template-columns: minmax(0, auto) minmax(0, 1fr);">
-          <dt class="text-gray-500 dark:text-gray-400">Filename</dt>
-          <dd class="text-gray-900 dark:text-gray-100">{{ document.original_file_name or "N/A" }}</dd>
-          <dt class="text-gray-500 dark:text-gray-400">Created</dt>
-          <dd class="text-gray-900 dark:text-gray-100">{{ document.created_date }}</dd>
-          <dt class="text-gray-500 dark:text-gray-400">Modified</dt>
-          <dd class="text-gray-900 dark:text-gray-100">{{ document.modified | datefmt }}</dd>
-          <dt class="text-gray-500 dark:text-gray-400">Added</dt>
-          <dd class="text-gray-900 dark:text-gray-100">{{ document.added | datefmt }}</dd>
-          <dt class="text-gray-500 dark:text-gray-400">ASN</dt>
-          <dd>{% if document.archive_serial_number is not none %}<span class="text-gray-900 dark:text-gray-100">{{ document.archive_serial_number }}</span>{% else %}<span class="text-gray-400 dark:text-gray-500">N/A</span>{% endif %}</dd>
-          <dt class="text-gray-500 dark:text-gray-400">Correspondent</dt>
-          <dd>{% if correspondent_name %}<span class="text-gray-900 dark:text-gray-100">{{ correspondent_name }}</span>{% else %}<span class="text-gray-400 dark:text-gray-500">N/A</span>{% endif %}</dd>
-          <dt class="text-gray-500 dark:text-gray-400">Document Type</dt>
-          <dd>{% if document_type_name %}<span class="text-gray-900 dark:text-gray-100">{{ document_type_name }}</span>{% else %}<span class="text-gray-400 dark:text-gray-500">N/A</span>{% endif %}</dd>
-          <dt class="text-gray-500 dark:text-gray-400">Storage Path</dt>
-          <dd>{% if storage_path_name %}<span class="text-gray-900 dark:text-gray-100">{{ storage_path_name }}</span>{% else %}<span class="text-gray-400 dark:text-gray-500">N/A</span>{% endif %}</dd>
-          <dt class="text-gray-500 dark:text-gray-400">Tags</dt>
-          <dd>
-            {% if tag_names %}
-            <div class="flex flex-wrap gap-1">
-              {% for tag in tag_names %}
-              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
-                    {% if tag.color is defined and tag.color %}
-                    style="background-color: {{ tag.color }}; color: {{ tag.text_color }};"
-                    {% else %}
-                    style="background-color: #6b7280; color: #ffffff;"
-                    {% endif %}>
-                {{ tag.name }}
-              </span>
-              {% endfor %}
-            </div>
-            {% else %}
-            <span class="text-gray-400 dark:text-gray-500">None</span>
-            {% endif %}
-          </dd>
-        </dl>
-      </div>
-
-      <!-- Collapsible metadata sections -->
-      {% if metadata.original_metadata %}
-      <details class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-        <summary class="px-4 py-3 cursor-pointer text-sm font-medium text-gray-500 dark:text-gray-400 select-none hover:text-gray-700 dark:hover:text-gray-300">
-          Original Metadata ({{ metadata.original_metadata | length }})
-        </summary>
-        <div class="px-4 pb-4">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="text-left text-gray-500 dark:text-gray-400">
-                <th class="pr-4 pb-1 font-medium">Key</th>
-                <th class="pb-1 font-medium">Value</th>
-              </tr>
-            </thead>
-            <tbody class="text-gray-700 dark:text-gray-300">
-              {% for item in metadata.original_metadata %}
-              <tr class="border-t border-gray-100 dark:border-gray-700">
-                <td class="pr-4 py-1 font-mono text-xs">{{ item.get("prefix", "") }}{{ ":" if item.get("prefix") }}{{ item.get("key", "") }}</td>
-                <td class="py-1 break-all">{{ item.get("value", "") }}</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+  <!-- Details card -->
+  <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+    <h2 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">Details</h2>
+    <dl class="grid gap-x-4 gap-y-2 text-sm" style="grid-template-columns: minmax(0, auto) minmax(0, 1fr);">
+      <dt class="text-gray-500 dark:text-gray-400">Filename</dt>
+      <dd class="text-gray-900 dark:text-gray-100">{{ document.original_file_name or "N/A" }}</dd>
+      <dt class="text-gray-500 dark:text-gray-400">Created</dt>
+      <dd class="text-gray-900 dark:text-gray-100">{{ document.created_date }}</dd>
+      <dt class="text-gray-500 dark:text-gray-400">Modified</dt>
+      <dd class="text-gray-900 dark:text-gray-100">{{ document.modified | datefmt }}</dd>
+      <dt class="text-gray-500 dark:text-gray-400">Added</dt>
+      <dd class="text-gray-900 dark:text-gray-100">{{ document.added | datefmt }}</dd>
+      <dt class="text-gray-500 dark:text-gray-400">ASN</dt>
+      <dd>{% if document.archive_serial_number is not none %}<span class="text-gray-900 dark:text-gray-100">{{ document.archive_serial_number }}</span>{% else %}<span class="text-gray-400 dark:text-gray-500">N/A</span>{% endif %}</dd>
+      <dt class="text-gray-500 dark:text-gray-400">Correspondent</dt>
+      <dd>{% if correspondent_name %}<span class="text-gray-900 dark:text-gray-100">{{ correspondent_name }}</span>{% else %}<span class="text-gray-400 dark:text-gray-500">N/A</span>{% endif %}</dd>
+      <dt class="text-gray-500 dark:text-gray-400">Document Type</dt>
+      <dd>{% if document_type_name %}<span class="text-gray-900 dark:text-gray-100">{{ document_type_name }}</span>{% else %}<span class="text-gray-400 dark:text-gray-500">N/A</span>{% endif %}</dd>
+      <dt class="text-gray-500 dark:text-gray-400">Storage Path</dt>
+      <dd>{% if storage_path_name %}<span class="text-gray-900 dark:text-gray-100">{{ storage_path_name }}</span>{% else %}<span class="text-gray-400 dark:text-gray-500">N/A</span>{% endif %}</dd>
+      <dt class="text-gray-500 dark:text-gray-400">Tags</dt>
+      <dd>
+        {% if tag_names %}
+        <div class="flex flex-wrap gap-1">
+          {% for tag in tag_names %}
+          <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                {% if tag.color is defined and tag.color %}
+                style="background-color: {{ tag.color }}; color: {{ tag.text_color }};"
+                {% else %}
+                style="background-color: #6b7280; color: #ffffff;"
+                {% endif %}>
+            {{ tag.name }}
+          </span>
+          {% endfor %}
         </div>
-      </details>
-      {% endif %}
-
-      {% if metadata.has_archive_version and metadata.archive_metadata %}
-      <details class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-        <summary class="px-4 py-3 cursor-pointer text-sm font-medium text-gray-500 dark:text-gray-400 select-none hover:text-gray-700 dark:hover:text-gray-300">
-          Archive Metadata ({{ metadata.archive_metadata | length }})
-        </summary>
-        <div class="px-4 pb-4">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="text-left text-gray-500 dark:text-gray-400">
-                <th class="pr-4 pb-1 font-medium">Key</th>
-                <th class="pb-1 font-medium">Value</th>
-              </tr>
-            </thead>
-            <tbody class="text-gray-700 dark:text-gray-300">
-              {% for item in metadata.archive_metadata %}
-              <tr class="border-t border-gray-100 dark:border-gray-700">
-                <td class="pr-4 py-1 font-mono text-xs">{{ item.get("prefix", "") }}{{ ":" if item.get("prefix") }}{{ item.get("key", "") }}</td>
-                <td class="py-1 break-all">{{ item.get("value", "") }}</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </details>
-      {% endif %}
-    </div>
-
-    <!-- Processing panel -->
-    <div class="space-y-4">
-      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-        <h2 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">Processing</h2>
-
-        <div class="space-y-3 text-sm">
-          <div class="flex items-center justify-between">
-            <span class="text-gray-500 dark:text-gray-400">Stage 1 (OCR)</span>
-            {% if stage1_enabled %}
-            <span class="text-green-600 dark:text-green-400">Enabled</span>
-            {% else %}
-            <span class="text-gray-400 dark:text-gray-500">Disabled</span>
-            {% endif %}
-          </div>
-          <div class="flex items-center justify-between">
-            <span class="text-gray-500 dark:text-gray-400">Stage 2 (Markdown)</span>
-            {% if stage2_enabled %}
-            <span class="text-green-600 dark:text-green-400">Enabled</span>
-            {% else %}
-            <span class="text-gray-400 dark:text-gray-500">Disabled</span>
-            {% endif %}
-          </div>
-        </div>
-
-        <hr class="my-4 border-gray-200 dark:border-gray-700">
-
-        <!-- Process form -->
-        <form class="space-y-3">
-          <label class="flex items-center space-x-2 text-sm">
-            <input type="checkbox" name="force" value="true"
-                   class="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500">
-            <span class="text-gray-700 dark:text-gray-300">Force reprocessing</span>
-          </label>
-
-          <div class="flex space-x-2">
-            <button type="submit"
-                    hx-post="/documents/{{ document.id }}/process"
-                    hx-target="#result-area"
-                    hx-swap="innerHTML"
-                    hx-include="[name='force']"
-                    class="flex-1 px-3 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
-              Process
-            </button>
-            <button type="submit"
-                    hx-post="/documents/{{ document.id }}/dry-run"
-                    hx-target="#result-area"
-                    hx-swap="innerHTML"
-                    hx-include="[name='force']"
-                    class="flex-1 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
-              Dry Run
-            </button>
-          </div>
-        </form>
-      </div>
-
-      <!-- Result area (filled by htmx) -->
-      <div id="result-area"></div>
-    </div>
+        {% else %}
+        <span class="text-gray-400 dark:text-gray-500">None</span>
+        {% endif %}
+      </dd>
+    </dl>
   </div>
+
+  <!-- Collapsible metadata sections -->
+  {% if metadata.original_metadata %}
+  <details class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+    <summary class="px-4 py-3 cursor-pointer text-sm font-medium text-gray-500 dark:text-gray-400 select-none hover:text-gray-700 dark:hover:text-gray-300">
+      Original Metadata ({{ metadata.original_metadata | length }})
+    </summary>
+    <div class="px-4 pb-4">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-gray-500 dark:text-gray-400">
+            <th class="pr-4 pb-1 font-medium">Key</th>
+            <th class="pb-1 font-medium">Value</th>
+          </tr>
+        </thead>
+        <tbody class="text-gray-700 dark:text-gray-300">
+          {% for item in metadata.original_metadata %}
+          <tr class="border-t border-gray-100 dark:border-gray-700">
+            <td class="pr-4 py-1 font-mono text-xs">{{ item.get("prefix", "") }}{{ ":" if item.get("prefix") }}{{ item.get("key", "") }}</td>
+            <td class="py-1 break-all">{{ item.get("value", "") }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+  {% endif %}
+
+  {% if metadata.has_archive_version and metadata.archive_metadata %}
+  <details class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+    <summary class="px-4 py-3 cursor-pointer text-sm font-medium text-gray-500 dark:text-gray-400 select-none hover:text-gray-700 dark:hover:text-gray-300">
+      Archive Metadata ({{ metadata.archive_metadata | length }})
+    </summary>
+    <div class="px-4 pb-4">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-gray-500 dark:text-gray-400">
+            <th class="pr-4 pb-1 font-medium">Key</th>
+            <th class="pb-1 font-medium">Value</th>
+          </tr>
+        </thead>
+        <tbody class="text-gray-700 dark:text-gray-300">
+          {% for item in metadata.archive_metadata %}
+          <tr class="border-t border-gray-100 dark:border-gray-700">
+            <td class="pr-4 py-1 font-mono text-xs">{{ item.get("prefix", "") }}{{ ":" if item.get("prefix") }}{{ item.get("key", "") }}</td>
+            <td class="py-1 break-all">{{ item.get("value", "") }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+  {% endif %}
+
+  <!-- Result area (filled by htmx from bottom bar actions) -->
+  <div id="result-area"></div>
 
   <!-- PDF viewer + Content side by side -->
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -196,6 +135,50 @@
       {% else %}
       <p class="text-sm text-gray-400 dark:text-gray-500 italic">No content available.</p>
       {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Fixed bottom action bar -->
+<div class="fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 shadow-lg">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
+    <div class="flex items-center space-x-4 text-sm">
+      <span class="text-gray-500 dark:text-gray-400">Stage 1 (OCR)</span>
+      {% if stage1_enabled %}
+      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">Enabled</span>
+      {% else %}
+      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400">Disabled</span>
+      {% endif %}
+      <span class="text-gray-300 dark:text-gray-600">|</span>
+      <span class="text-gray-500 dark:text-gray-400">Stage 2 (Markdown)</span>
+      {% if stage2_enabled %}
+      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">Enabled</span>
+      {% else %}
+      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400">Disabled</span>
+      {% endif %}
+    </div>
+    <div class="flex items-center space-x-3">
+      <label class="flex items-center space-x-2 text-sm">
+        <input type="checkbox" name="force" value="true"
+               class="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500">
+        <span class="text-gray-700 dark:text-gray-300">Force</span>
+      </label>
+      <button type="button"
+              hx-post="/documents/{{ document.id }}/dry-run"
+              hx-target="#result-area"
+              hx-swap="innerHTML"
+              hx-include="[name='force']"
+              class="px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+        Dry Run
+      </button>
+      <button type="button"
+              hx-post="/documents/{{ document.id }}/process"
+              hx-target="#result-area"
+              hx-swap="innerHTML"
+              hx-include="[name='force']"
+              class="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+        Process
+      </button>
     </div>
   </div>
 </div>
